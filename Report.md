@@ -21,7 +21,7 @@ For example:
 - Selection sort (MPI on each core)
 
 We will communicate over text and in person. 
-
+```
 Bubble Sort Pseudocode
 for all elements of list
    if list[i] > list[i+1]
@@ -45,3 +45,4 @@ for i from 0 to length of list:
         if list[min_idx] > list[j]:
             min_idx = j      
     swap(list[i], list[min_idx])
+```
