@@ -31,7 +31,7 @@ end for
 
 Insertion Sort Pseudocode
 for i from 1 to length of list:
-      key = list[i]
+      key = list[i]  
         j = i-1
         while j >= 0 and key < list[j] :
                 list[j + 1] = list[j]
