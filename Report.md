@@ -9,6 +9,7 @@
 ---
 
 ## 2. _due 10/25_ Project topic
+Performance comparison of different parallel sorting algorithms
 
 ## 2. _due 10/25_ Brief project description (what algorithms will you be comparing and on what architectures)
 
