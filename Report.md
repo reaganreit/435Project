@@ -173,6 +173,7 @@ function main()
 
 
 **Merge Sort MPI Pseudo**
+https://github.com/racorretjer/Parallel-Merge-Sort-with-MPI/blob/master/merge-mpi.c 
 function merge(arr, aux, low, mid, high)
     h := low
     i := low
@@ -265,7 +266,8 @@ function main(argc, argv)
     parallelMergeSort(original_array, n)
 end function
 
-**Merge Sort CUDA Implementation**
+**Merge Sort CUDA Pseudo**
+https://github.com/kevin-albert/cuda-mergesort
 function mergesort(data)
     Initialize threadsPerBlock and blocksPerGrid
     size = readList(data)
@@ -430,6 +432,256 @@ function sort_recursive(arr, size, pr_rank, max_rank, rank_index)
     end if
 end function
 
+
+**Bitonic Sort CUDA Pseudo**
+https://gist.github.com/mre/1392067
+function bitonicSort(values)
+    allocate device memory dev_values of size NUM_VALS * sizeof(float)
+    copy values to dev_values from host to device
+
+    blocks = BLOCKS
+    threads = THREADS
+    k = 2
+
+    // Major step
+    while k <= NUM_VALS
+        j = k / 2
+
+        // Minor step
+        while j > 0
+            launch bitonicSortStep kernel with dev_values, j, k, blocks, and threads
+            j = j / 2
+
+        k = k * 2
+
+    copy dev_values to values from device to host
+    free device memory dev_values
+
+function bitonicSortStep(dev_values, j, k, blocks, threads)
+    i = get_thread_id() + get_block_id() * threads
+    ixj = i XOR j
+
+    // Sorting partners: i and ixj
+    if ixj > i
+        if (i & k) == 0
+            // Sort ascending
+            if dev_values[i] > dev_values[ixj]
+                swap dev_values[i] and dev_values[ixj]
+        
+        if (i & k) != 0
+            // Sort descending
+            if dev_values[i] < dev_values[ixj]
+                swap dev_values[i] and dev_values[ixj]
+
+function print_elapsed(start, stop)
+    elapsed = (stop - start) / CLOCKS_PER_SEC
+    print "Elapsed time: " + elapsed + "s"
+
+function random_float()
+    return random float value
+
+function array_fill(arr, length)
+    for i = 0 to length - 1
+        arr[i] = random_float()
+
+function main()
+    start = current_time
+    allocate memory for values of size NUM_VALS * sizeof(float)
+    fill values with random data
+    call bitonicSort(values)
+    stop = current_time
+    print_elapsed(start, stop)
+
+
+
+**Bitonic Sort MPI Pseudo**
+https://cse.buffalo.edu/faculty/miller/Courses/CSE702/Sajid.Khan-Fall-2018.pdf
+https://people.cs.rutgers.edu/~venugopa/parallel_summer2012/mpi_bitonic.html
+FUNCTION generateDataSet(dataSet[], size)
+    PRINT "[0] creating dataset ..."
+    SET seed to current time
+    FOR index from 0 to size
+        dataSet[index] = index
+END FUNCTION
+
+FUNCTION randomizeData(dataSet[], tempDataSet[], size)
+    PRINT "[0] dataset of size size being randomized ..."
+    FOR index from 0 to size
+        tempDataSet[index] = random value
+    CALL SelectionSort(tempDataSet, dataSet, size)
+END FUNCTION
+
+FUNCTION SelectionSort(a[], b[], size)
+    FOR i from 0 to size - 1
+        SET min to i
+        FOR j from i + 1 to size
+            IF a[j] < a[min]
+                min = j
+        SET tempB to b[i]
+        SET tempA to a[i]
+        SET a[i] to a[min]
+        SET b[i] to b[min]
+        SET a[min] to tempA
+        SET b[min] to tempB
+END FUNCTION
+
+FUNCTION masterHandshake(buff, numprocs, BUFSIZE, TAG, stat)
+    FOR i from 1 to numprocs - 1
+        SET buff to "hey i!"
+        SEND buff to process i with buffer size BUFSIZE and tag TAG using MPI
+    FOR i from 1 to numprocs - 1
+        RECEIVE buff with buffer size BUFSIZE and tag TAG from process i using MPI
+        PRINT "i: buff"
+END FUNCTION
+
+FUNCTION workerHandshake(buff, numprocs, BUFSIZE, TAG, stat, myid)
+    DECLARE idstr as string
+    RECEIVE buff with buffer size BUFSIZE and tag TAG from process 0 using MPI
+    SET idstr to "Processor myid"
+    CONCATENATE idstr to buff
+    CONCATENATE "reporting for duty" to buff
+    SEND buff to process 0 with buffer size BUFSIZE and tag TAG using MPI
+END FUNCTION
+
+FUNCTION distributeIntArray(numprocs, dataSet[], SIZE)
+    FOR dest from 1 to numprocs
+        PRINT "sending data to processor dest, size = SIZE/(numprocs-1)"
+        MPI_Send dataSet with size SIZE and tag 1 to process dest using MPI
+    PRINT "sending data to p"
+    CALL MPI_Finalize()
+END FUNCTION
+
+FUNCTION sendIntArray(numprocs, dataSet[], SIZE, target)
+    FOR dest from 1 to numprocs
+        PRINT "sending data to processor dest, size = SIZE/(numprocs-1)"
+        MPI_Send dataSet with size SIZE and tag 1 to process dest using MPI
+    PRINT "sending data to p"
+    CALL MPI_Finalize()
+END FUNCTION
+
+FUNCTION recieveIntArray(buf[], len, stat, from)
+    PRINT "check"
+    MPI_Recv buf with size len, MPI_INT, from, 1, MPI_COMM_WORLD, stat
+    PRINT "check1 buf[63]"
+END FUNCTION
+
+FUNCTION bitonicSort(start, len, data[])
+    IF len > 1
+        SET split to len/2
+        CALL bitonicSort(start, split, data)
+        CALL bitonicSort(start + split, split, data)
+        CALL merge(start, len, data)
+END FUNCTION
+
+FUNCTION merge(start, len, data[])
+    IF len > 1
+        SET mid to len/2
+        FOR x from start to start + mid
+            CALL compareAndSwap(data, x, x + mid)
+        CALL merge(start, mid, data)
+        CALL merge(start + mid, start, data)
+END FUNCTION
+
+FUNCTION compareAndSwap(data[], i, j)
+    DECLARE temp as integer
+    IF data[i] > data[j]
+        SET temp to data[i]
+        SET data[i] to data[j]
+        SET data[j] to temp
+END FUNCTION
+
+FUNCTION generateDataSet(dataSet[], size)
+    PRINT "[0] creating dataset ..."
+    SET seed to current time
+    FOR index from 0 to size
+        dataSet[index] = index
+END FUNCTION
+
+FUNCTION randomizeData(dataSet[], tempDataSet[], size)
+    PRINT "[0] dataset of size size being randomized ..."
+    FOR index from 0 to size
+        tempDataSet[index] = random value
+    CALL SelectionSort(tempDataSet, dataSet, size)
+END FUNCTION
+
+FUNCTION SelectionSort(a[], b[], size)
+    FOR i from 0 to size - 1
+        SET min to i
+        FOR j from i + 1 to size
+            IF a[j] < a[min]
+                min = j
+        SET tempB to b[i]
+        SET tempA to a[i]
+        SET a[i] to a[min]
+        SET b[i] to b[min]
+        SET a[min] to tempA
+        SET b[min] to tempB
+END FUNCTION
+
+FUNCTION masterHandshake(buff, numprocs, BUFSIZE, TAG, stat)
+    FOR i from 1 to numprocs - 1
+        SET buff to "hey i!"
+        SEND buff to process i with buffer size BUFSIZE and tag TAG using MPI
+    FOR i from 1 to numprocs - 1
+        RECEIVE buff with buffer size BUFSIZE and tag TAG from process i using MPI
+        PRINT "i: buff"
+END FUNCTION
+
+FUNCTION slaveHandshake(buff, numprocs, BUFSIZE, TAG, stat, myid)
+    DECLARE idstr as string
+    RECEIVE buff with buffer size BUFSIZE and tag TAG from process 0 using MPI
+    SET idstr to "Processor myid"
+    CONCATENATE idstr to buff
+    CONCATENATE "reporting for duty" to buff
+    SEND buff to process 0 with buffer size BUFSIZE and tag TAG using MPI
+END FUNCTION
+
+FUNCTION distributeIntArray(numprocs, dataSet[], SIZE)
+    FOR dest from 1 to numprocs
+        PRINT "sending data to processor dest, size = SIZE/(numprocs-1)"
+        MPI_Send dataSet with size SIZE and tag 1 to process dest using MPI
+    PRINT "sending data to p"
+    CALL MPI_Finalize()
+END FUNCTION
+
+FUNCTION sendIntArray(numprocs, dataSet[], SIZE, target)
+    FOR dest from 1 to numprocs
+        PRINT "sending data to processor dest, size = SIZE/(numprocs-1)"
+        MPI_Send dataSet with size SIZE and tag 1 to process dest using MPI
+    PRINT "sending data to p"
+    CALL MPI_Finalize()
+END FUNCTION
+
+FUNCTION recieveIntArray(buf[], len, stat, from)
+    PRINT "check"
+    MPI_Recv buf with size len, MPI_INT, from, 1, MPI_COMM_WORLD, stat
+    PRINT "check1 buf[63]"
+END FUNCTION
+
+FUNCTION bitonicSort(start, len, data[])
+    IF len > 1
+        SET split to len/2
+        CALL bitonicSort(start, split, data)
+        CALL bitonicSort(start + split, split, data)
+        CALL merge(start, len, data)
+END FUNCTION
+
+FUNCTION merge(start, len, data[])
+    IF len > 1
+        SET mid to len/2
+        FOR x from start to start + mid
+            CALL compareAndSwap(data, x, x + mid)
+        CALL merge(start, mid, data)
+        CALL merge(start + mid, start, data)
+END FUNCTION
+
+FUNCTION compareAndSwap(data[], i, j)
+    DECLARE temp as integer
+    IF data[i] > data[j]
+        SET temp to data[i]
+        SET data[i] to data[j]
+        SET data[j] to temp
+END FUNCTION
 
 
 ```
