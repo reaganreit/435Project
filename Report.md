@@ -343,6 +343,94 @@ function tm()
     previous_time = current_time
     return elapsed_time
 
+**Quicksort CUDA Pseudo**
+https://forums.developer.nvidia.com/t/quick-sort-depth/35100
+
+unsigned int *lptr = data + left;
+unsigned int *rptr = data + right;
+unsigned int  pivot = data[(left + right) / 2];
+
+// Do the partitioning.
+while (lptr <= rptr)
+{
+	// Find the next left- and right-hand values to swap
+	unsigned int lval = *lptr;
+	unsigned int rval = *rptr;
+
+	// Move the left pointer as long as the pointed element is smaller than the pivot.
+	while (lval < pivot)
+	{
+		lptr++;
+		lval = *lptr;
+	}
+
+	// Move the right pointer as long as the pointed element is larger than the pivot.
+	while (rval > pivot)
+	{
+		rptr--;
+		rval = *rptr;
+	}
+
+	// If the swap points are valid, do the swap!
+	if (lptr <= rptr)
+	{
+		*lptr++ = rval;
+		*rptr-- = lval;
+	}
+}
+
+// Now the recursive part
+int nright = rptr - data;
+int nleft = lptr - data;
+
+// Launch a new block to sort the left part.
+if (left < (rptr - data))
+{
+	cudaStream_t s;
+	cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
+	cdp_simple_quicksort << < 1, 1, 0, s >> >(data, left, nright, depth + 1);
+	cudaStreamDestroy(s);
+}
+
+// Launch a new block to sort the right part.
+if ((lptr - data) < right)
+{
+	cudaStream_t s1;
+	cudaStreamCreateWithFlags(&s1, cudaStreamNonBlocking);
+	cdp_simple_quicksort << < 1, 1, 0, s1 >> >(data, nleft, right, depth + 1);
+	cudaStreamDestroy(s1);
+}
+
+
+**Quicksort MPI Pseudo**
+https://www.codeproject.com/KB/threads/Parallel_Quicksort/Parallel_Quick_sort_without_merge.pdf 
+
+function sort_recursive(arr, size, pr_rank, max_rank, rank_index)
+    dtIn := MPI_Status
+
+    share_pr := pr_rank + 2^rank_index // Calculate the rank of the sharing process 
+    rank_index := rank_index + 1 // Increment the count index 
+
+    if share_pr > max_rank // If no process to share, sort recursively sequentially 
+        sort_rec_seq(arr, size)
+        return 0
+    end if
+
+    pivot := arr[size / 2] // Select the pivot 
+    partition_pt := sequential_quicksort(arr, pivot, size, (size / 2) - 1) // Partition array 
+    offset := partition_pt + 1
+
+    if offset > size - offset
+        MPI_Send((arr + offset), size - offset, MPI_INT, share_pr, offset, MPI_COMM_WORLD)
+        sort_recursive(arr, offset, pr_rank, max_rank, rank_index)
+        MPI_Recv((arr + offset), size - offset, MPI_INT, share_pr, MPI_ANY_TAG, MPI_COMM_WORLD, dtIn)
+    else
+        MPI_Send(arr, offset, MPI_INT, share_pr, tag, MPI_COMM_WORLD)
+        sort_recursive((arr + offset), size - offset, pr_rank, max_rank, rank_index)
+        MPI_Recv(arr, offset, MPI_INT, share_pr, MPI_ANY_TAG, MPI_COMM_WORLD, dtIn)
+    end if
+end function
+
 
 
 ```
