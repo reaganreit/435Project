@@ -172,8 +172,8 @@ function main()
 
 
 
-Merge Sort MPI Pseudo
-function merge(arr, aux, low, mid, high)
+**Merge Sort MPI Pseudo
+**function merge(arr, aux, low, mid, high)
     h := low
     i := low
     j := mid + 1
@@ -265,8 +265,8 @@ function main(argc, argv)
     parallelMergeSort(original_array, n)
 end function
 
-Merge Sort CUDA Implementation
-
+**Merge Sort CUDA Implementation
+**
 function mergesort(data)
     Initialize threadsPerBlock and blocksPerGrid
     size = readList(data)
