@@ -171,4 +171,178 @@ function main()
     delete[] h_data
 
 
+
+Merge Sort MPI Pseudo
+function merge(arr, aux, low, mid, high)
+    h := low
+    i := low
+    j := mid + 1
+
+    while (h <= mid) and (j <= high)
+        if arr[h] <= arr[j]
+            aux[i] := arr[h]
+            h := h + 1
+        else
+            aux[i] := arr[j]
+            j := j + 1
+        i := i + 1
+
+    if mid < h
+        for k from j to high
+            aux[i] := arr[k]
+            i := i + 1
+    else
+        for k from h to mid
+            aux[i] := arr[k]
+            i := i + 1
+
+    for k from low to high
+        arr[k] := aux[k]
+
+end function
+
+function mergeSort(arr, aux, low, high)
+    if low < high
+        mid := (low + high) / 2
+
+        mergeSort(arr, aux, low, mid)
+        mergeSort(arr, aux, mid + 1, high)
+        merge(arr, aux, low, mid, high)
+    end if
+end function
+
+function parallelMergeSort(arr, n)
+    Initialize MPI
+    world_rank := current process rank
+    world_size := total number of processes
+
+    size := n / world_size
+    sub_arr := allocate memory for a subarray of size
+
+    Scatter original_array into sub_arr
+
+    tmp_arr := allocate memory for a temporary array of size
+
+    mergeSort(sub_arr, tmp_arr, 0, size - 1)
+
+    sorted := allocate memory for the final sorted array
+
+    Gather sub_arr into sorted
+
+    if world_rank is 0
+        other_arr := allocate memory for another temporary array of size
+        mergeSort(sorted, other_arr, 0, n - 1)
+
+        Display "This is the sorted array: "
+        for each element in sorted
+            Display the element
+        Display a newline
+
+        Clean up root process
+        free sorted
+        free other_arr
+    end if
+
+    Clean up other processes
+    free original_array
+    free sub_arr
+    free tmp_arr
+
+    Finalize MPI
+end function
+
+function main(argc, argv)
+    n := convert argv[1] to integer
+    original_array := allocate memory for an array of n integers
+
+    Initialize random number generator
+    Display "This is the unsorted array: "
+    for c from 0 to n - 1
+        original_array[c] := generate a random integer between 0 and n - 1
+        Display original_array[c]
+    Display a newline
+
+    parallelMergeSort(original_array, n)
+end function
+
+Merge Sort CUDA Implementation
+
+function mergesort(data)
+    Initialize threadsPerBlock and blocksPerGrid
+    size = readList(data)
+    
+    D_data = allocateDeviceMemory(size)
+    D_swp = allocateDeviceMemory(size)
+    D_threads = allocateDeviceMemory(threadsPerBlock)
+    D_blocks = allocateDeviceMemory(blocksPerGrid)
+    
+    copyDataToDevice(data, D_data)
+    
+    A = D_data
+    B = D_swp
+    nThreads = calculateTotalThreads(threadsPerBlock, blocksPerGrid)
+    
+    for width = 2 to (size * 2) step width * 2
+        slices = size / (nThreads * width) + 1
+        call gpu_mergesort_kernel(A, B, size, width, slices, D_threads, D_blocks)
+        swap(A, B)
+
+    copyDataToHost(A, data)
+    freeDeviceMemory(D_data, D_swp, D_threads, D_blocks)
+
+function gpu_mergesort_kernel(source, dest, size, width, slices, threads, blocks)
+    idx = getIdx(threads, blocks)
+    start = width * idx * slices
+    
+    for slice = 0 to slices
+        if start >= size
+            break
+        middle = min(start + (width / 2), size)
+        end = min(start + width, size)
+        gpu_bottomUpMerge(source, dest, start, middle, end)
+        start += width
+
+function gpu_bottomUpMerge(source, dest, start, middle, end)
+    i = start
+    j = middle
+    for k = start to end
+        if i < middle and (j >= end or source[i] < source[j])
+            dest[k] = source[i]
+            i++
+        else
+            dest[k] = source[j]
+            j++
+
+function readList(list)
+    size = 0
+    first = None
+    node = None
+    while read a value from stdin
+        create a new LinkNode with the value
+        if node is not None
+            set node.next to the new node
+        else
+            set first to the new node
+        set node to the new node
+        size++
+    
+    if size > 0
+        allocate memory for list of size
+        node = first
+        i = 0
+        while node is not None
+            set list[i] to node.value
+            move to the next node
+            increment i
+    
+    return size
+
+function tm()
+    current_time = get current time in microseconds
+    elapsed_time = current_time - previous_time
+    previous_time = current_time
+    return elapsed_time
+
+
+
 ```
