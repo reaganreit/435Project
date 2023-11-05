@@ -1,9 +1,0 @@
-mask size = 4
-
-starting radix sort...finished
-
-CORRECT! Result is ordered
-189964.710000, CORRECT! Result is ordered
-CORRECT! Result is ordered
-180005.565000, 186990.884000, CORRECT! Result is ordered
-186994.389000, Sorted Array: 3 13 15 19 33 34 35 39 45 54 65 100 134 230 543 654 
