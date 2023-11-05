@@ -1,3 +1,0 @@
-/scratch/user/emilyvyha120/435Project/Builds/MPI/CMakeFiles/rebuild_cache.dir
-/scratch/user/emilyvyha120/435Project/Builds/MPI/CMakeFiles/edit_cache.dir
-/scratch/user/emilyvyha120/435Project/Builds/MPI/CMakeFiles/radix.dir
