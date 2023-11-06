@@ -37,7 +37,8 @@ int main(int argc, char *argv[]) {
   	source,                /* task id of message source */
   	dest,                  /* task id of message destination */
   	mtype,                 /* message type */
-  	avgVals, extra, offset; /* used to determine rows sent to each worker */
+  	avgVals, extra, offset, /* used to determine rows sent to each worker */
+    greaterThan, lessThan; 
   MPI_Status status;
   
   MPI_Init(&argc,&argv);
@@ -52,7 +53,8 @@ int main(int argc, char *argv[]) {
   
   avgVals = numValues/numWorkers;
   int workerValues;
-  int mainArr[numValues];
+  int mainArr[numValues];   // array workers will read
+  int finalArr[numValues];  // array workers will write to
   
   if (taskid == MASTER) {
     printf("Sample sort has started with %d tasks.\n", numWorkers);
@@ -69,6 +71,7 @@ int main(int argc, char *argv[]) {
     mtype = FROM_MASTER;
     for (dest=1; dest<=numWorkers; dest++)
     {
+         // TODO: implement logic for extra
          //workerValues = (dest <= extra) ? avgVals+1 : avgVals;  
          workerValues = avgVals; 	
          printf("Sending %d values to task %d offset=%d\n",workerValues,dest,offset);
@@ -79,12 +82,15 @@ int main(int argc, char *argv[]) {
     
     // receive chosen samples from workers
     mtype = FROM_WORKER;
-    int totalSamples[(numWorkers-1)*numWorkers];
+    std::vector<int> totalSamples((numWorkers-1)*numWorkers);
     for (source=1; source<=numWorkers; source++)
     {
          MPI_Recv(&totalSamples[(numWorkers-1)*(source-1)], numWorkers-1, MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
          printf("Received results from task %d\n",source);
     }
+    
+    // sequentially sort samples
+    std::sort(totalSamples.begin(), totalSamples.end());
     
     printf("total sample: ");
     for (int sample: totalSamples) {
@@ -92,24 +98,54 @@ int main(int argc, char *argv[]) {
     }
     printf("\n");
     
+    // choose global splitters
+    int globalSplitters[numWorkers-1];
+    int spacing = std::ceil((float)totalSamples.size()/(float)numWorkers);
+    //printf("spacing: %d\n", spacing);
+    int index = spacing-1;
+    for (int i=0; i<numWorkers-1; i++) {
+      globalSplitters[i] = totalSamples[index];
+      //printf("index: %d\n", index);
+      index += spacing;
+    }
+    
+    // TODO: make selection more evenly spaced?
+    printf("Global splitters: ");
+    for (int splitter: globalSplitters) {
+       printf("%d ", splitter); 
+    }
+    printf("\n");
+    
+    // Master process broadcasts the splitters to all other processes
+    // splitters dictate what the start/end of each subarr should be
+    greaterThan = 0;
+    lessThan;
+    offset = 0;
+    mtype = FROM_MASTER;
+    for (dest=1; dest<=numWorkers; dest++)
+    {
+         lessThan = globalSplitters[dest-1];
+         if (dest==numWorkers)
+           lessThan = INT_MAX;
+         printf("Sending %d to %d task %d offset=%d\n", greaterThan, lessThan, dest, offset);
+         MPI_Send(&greaterThan, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
+         MPI_Send(&lessThan, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
+         MPI_Send(&offset, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
+         offset += avgVals;
+         greaterThan = lessThan;
+    }
+    
   }
   
   
   if (taskid != MASTER) {
     //create array of size numWorkers-1 to store chosen samples
     int chosenSamples[numWorkers-1];
+    
     // receive values from master
     mtype = FROM_MASTER;
     std::vector<int> arr(avgVals);
     MPI_Recv(&arr[0], avgVals, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
-    
-    /*
-    printf("Received results for task %d\n", taskid);
-    for (int num: arr) {
-      printf("%d ", num); 
-      printf("\n");
-    }
-    */
     
     // locally sort arr with sequential sorting
     std::sort(arr.begin(), arr.end());
@@ -143,6 +179,14 @@ int main(int argc, char *argv[]) {
     // MPI_Send chosenSamples to MASTER
     mtype = FROM_WORKER;
     MPI_Send(&chosenSamples, numWorkers-1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
+    
+    // receive splitters and offset from master
+    mtype = FROM_MASTER;
+    int localArr[avgVals];
+    MPI_Recv(&greaterThan, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
+    MPI_Recv(&lessThan, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
+    MPI_Recv(&offset, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
+    printf("task %d received greaterThan = %d, lessThan = %d, and offset = %d \n", taskid, greaterThan, lessThan, offset);
   }
   
   /*
