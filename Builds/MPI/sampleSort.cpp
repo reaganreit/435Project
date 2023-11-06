@@ -131,9 +131,26 @@ int main(int argc, char *argv[]) {
          MPI_Send(&greaterThan, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
          MPI_Send(&lessThan, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
          MPI_Send(&offset, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
+         MPI_Send(&mainArr, numValues, MPI_INT, dest, mtype, MPI_COMM_WORLD);
          offset += avgVals;
          greaterThan = lessThan;
     }
+    
+    // receive results from workers
+    mtype = FROM_WORKER;
+    std::vector<int> localResults(avgVals);
+    for (source=1; source<=numWorkers; source++)
+    {
+         MPI_Recv(&offset, 1, MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
+         MPI_Recv(&finalArr[offset], avgVals, MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
+         printf("Received results from task %d\n",source);
+    }
+    
+    printf("final array: ");
+    for (int num : finalArr) {
+      printf("%d ", num);
+    }
+    printf("\n");
     
   }
   
@@ -149,14 +166,6 @@ int main(int argc, char *argv[]) {
     
     // locally sort arr with sequential sorting
     std::sort(arr.begin(), arr.end());
-    
-    /*
-    printf("sorted vector: ");
-    for (int num: arr) {
-      printf("%d ", num); 
-      printf("\n");
-    }
-    */
     
     // choose samples and add to sampleArr
     int spacing = std::ceil((float)avgVals/(float)numWorkers);
@@ -186,61 +195,33 @@ int main(int argc, char *argv[]) {
     MPI_Recv(&greaterThan, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
     MPI_Recv(&lessThan, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
     MPI_Recv(&offset, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
+    MPI_Recv(&mainArr, numValues, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
     printf("task %d received greaterThan = %d, lessThan = %d, and offset = %d \n", taskid, greaterThan, lessThan, offset);
-  }
-  
-  /*
-  
-  if (MASTER) {
-    // receive samples from workers
-    totalSamples[(numWorkers-1)(numWorkers)]
-    for (i=1; i<=numWorkers; i++)
-    {
-           MPI_Recv samples from WORKER
-           add received values to totalSamples
-    }
-    // Master process sequentially sorts the p(p-1) sample elements and selects p-1 splitters
-    splitters[numWorkers-1]
-    sort totalSamples
-    choose p-1 splitters and store in splitters array
-    // Master process broadcasts the splitters to all other processes
-    // splitters dictate what the start/end of each subarr should be
-    // make sure to maintain offset so process can write to main arr correctly
-    currSplitter = 0
-    for (i=1; i<=numWorkers; i++)
-    {
-           MPI_Send entire arr, and [start, splitters[currSplitter]) to each worker
-           MPI_Send offset to each worker
-           offset += values
-           start = splitters[currSplitter]
-           currSplitter++
-    }
-  }
-  
-  if (WORKER) {
-    // Receive arr, start, splitter, and offset from master
-    MPI_Recv arr from MASTER
-    MPI_Recv start from MASTER
-    MPI_Recv splitter from MASTER
-    MPI_Recv offset from MASTER
     
-    localArr[values]
-    find values from arr that fall in between [start, splitter) and add to localArr
-    sort localArr
-    send localArr back to MASTER along with offset so it knows where to insert values
-    MPI_Send localArr to MASTER
-    MPI_Send offset to MASTER
-  }
-  
-  finalArr[numValues]
-  if (MASTER) {
-    for (i=1 ; i<=numWorkers; i++) {
-      MPI_Recv localArr
-      MPI_offset
-      insert localArr starting at finalArr[offset]
+    int localArrIndex = 0;
+    // find values that fall within range
+    for (int num: mainArr) {
+      if (num >= greaterThan && num < lessThan) {
+        localArr[localArrIndex] = num;
+        localArrIndex++;
+      }
     }
+    
+    // sort local arr
+    int size = sizeof(localArr) / sizeof(localArr[0]);
+    std::sort(localArr, localArr + size);
+    
+    printf("localArr\n");
+    for (int num: localArr) {
+      printf("%d ", num);
+    }
+    printf("\n");
+    
+    // send results back to master
+    mtype = FROM_WORKER;
+    MPI_Send(&offset, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
+    MPI_Send(&localArr, avgVals, MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
   }
-  */
   
   mgr.stop();
   mgr.flush();
