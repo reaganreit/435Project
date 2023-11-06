@@ -71,11 +71,9 @@ int main(int argc, char *argv[]) {
     mtype = FROM_MASTER;
     for (dest=1; dest<=numWorkers; dest++)
     {
-         // TODO: implement logic for extra
-         //workerValues = (dest <= extra) ? avgVals+1 : avgVals;  
-         workerValues = avgVals; 	
+         workerValues = (dest <= extra) ? avgVals+1 : avgVals;  
          printf("Sending %d values to task %d offset=%d\n",workerValues,dest,offset);
-         // MPI_Send(&offset, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
+         MPI_Send(&workerValues, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
          MPI_Send(&mainArr[offset], workerValues, MPI_INT, dest, mtype, MPI_COMM_WORLD);
          offset = offset + workerValues;
     }
@@ -134,12 +132,12 @@ int main(int argc, char *argv[]) {
     mtype = FROM_WORKER;
     for (source=1; source<=numWorkers; source++)
     {
-         int buckets[numWorkers][avgVals];
-         MPI_Recv(&buckets, numWorkers*avgVals, MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
+         int buckets[numWorkers][avgVals+1];
+         MPI_Recv(&buckets, numWorkers*(avgVals+1), MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
          printf("Received results from task %d\n",source);
          printf("Bucket contents\n");
          for (int i=0; i<numWorkers; i++) {
-           for (int j=0; j<avgVals; j++) {
+           for (int j=0; j<avgVals+1; j++) {
              if (buckets[i][j] != -1)
                accumBuckets[i].push_back(buckets[i][j]);
            }
@@ -160,6 +158,7 @@ int main(int argc, char *argv[]) {
        }
     }
     
+    printf("final index: %d\n", finalIndex);
     // check final array
     printf("FINAL ARRAY\n");
     for (int num : finalArr) {
@@ -173,17 +172,19 @@ int main(int argc, char *argv[]) {
   if (taskid != MASTER) {
     //create array of size numWorkers-1 to store chosen samples
     int chosenSamples[numWorkers-1];
+    int workerValues;
     
     // receive values from master
     mtype = FROM_MASTER;
-    std::vector<int> arr(avgVals);
-    MPI_Recv(&arr[0], avgVals, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
+    MPI_Recv(&workerValues, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
+    std::vector<int> arr(workerValues);
+    MPI_Recv(&arr[0], workerValues, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
     
     // locally sort arr with sequential sorting
     std::sort(arr.begin(), arr.end());
     
     // choose samples and add to sampleArr
-    int spacing = std::ceil((float)avgVals/(float)numWorkers);
+    int spacing = std::ceil((float)workerValues/(float)numWorkers);
     //printf("spacing: %d\n", spacing);
     int index = spacing-1;
     for (int i=0; i<numWorkers-1; i++) {
@@ -204,7 +205,8 @@ int main(int argc, char *argv[]) {
     mtype = FROM_WORKER;
     MPI_Send(&chosenSamples, numWorkers-1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
     
-    // receive splitters and offset from master
+    
+    // receive splitters from master
     mtype = FROM_MASTER;
     int splitters[numWorkers-1];
     MPI_Recv(&splitters, numWorkers-1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
@@ -216,23 +218,21 @@ int main(int argc, char *argv[]) {
     }
     printf("\n");
     
-    
-    int buckets[numWorkers][avgVals];
+    int buckets[numWorkers][avgVals+1];
     int arrIndex[numWorkers];
     // initialize the entire array with -1 so we know which values aren't used
     for (int i=0; i<numWorkers; i++) {
       arrIndex[i]=0;
-      for (int j=0; j<avgVals; j++) {
+      for (int j=0; j<avgVals+1; j++) {
         buckets[i][j]= -1;
       }
     }
-
     
     int j;
     for(int num : arr) {
   		j = 0;
   		while(j < numWorkers) {  // j being which process/bucket it should belong to
-  			if (j == numWorkers) {
+  			if (j == numWorkers-1) {
           // means it should go in last bucket
           // makes sure that we don't try to access splitters[buckets.size()-1]. will go out of range
           buckets[j][arrIndex[j]] = num;
@@ -252,7 +252,7 @@ int main(int argc, char *argv[]) {
    
     // send buckets back to MASTER
     mtype = FROM_WORKER;
-    MPI_Send(&buckets, numWorkers*avgVals, MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
+    MPI_Send(&buckets, numWorkers*(avgVals+1), MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
     
   }
   
