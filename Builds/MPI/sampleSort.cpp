@@ -17,6 +17,15 @@
 #define FROM_MASTER 1          /* setting a message type */
 #define FROM_WORKER 2          /* setting a message type */
 
+int correctness_check(int arr[], int size) {
+  for (int i=0; i<size-1; i++) {
+    if (arr[i+1] < arr[i])
+      return 0;  // means it's not ordered correctly
+  }
+  
+  return 1;
+}
+
 int main(int argc, char *argv[]) {
   CALI_CXX_MARK_FUNCTION;
     
@@ -165,6 +174,12 @@ int main(int argc, char *argv[]) {
       printf("%d ", num);
     }
     printf("\n");
+    
+    if (correctness_check(finalArr, numValues)) {
+      printf("CORRECT");
+    } else {
+      printf("INCORRECT");
+    }
     
   }
   
