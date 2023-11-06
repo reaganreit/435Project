@@ -118,35 +118,50 @@ int main(int argc, char *argv[]) {
     
     // Master process broadcasts the splitters to all other processes
     // splitters dictate what the start/end of each subarr should be
-    greaterThan = 0;
-    lessThan;
-    offset = 0;
     mtype = FROM_MASTER;
     for (dest=1; dest<=numWorkers; dest++)
     {
          lessThan = globalSplitters[dest-1];
          if (dest==numWorkers)
            lessThan = INT_MAX;
-         printf("Sending %d to %d task %d offset=%d\n", greaterThan, lessThan, dest, offset);
-         MPI_Send(&greaterThan, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
-         MPI_Send(&lessThan, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
-         MPI_Send(&offset, 1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
+         //printf("Sending %d to %d task %d offset=%d\n", greaterThan, lessThan, dest, offset);
+         MPI_Send(&globalSplitters, numWorkers-1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
          MPI_Send(&mainArr, numValues, MPI_INT, dest, mtype, MPI_COMM_WORLD);
-         offset += avgVals;
-         greaterThan = lessThan;
     }
     
     // receive results from workers
+    std::vector<std::vector<int>> accumBuckets(numWorkers); 
     mtype = FROM_WORKER;
-    std::vector<int> localResults(avgVals);
     for (source=1; source<=numWorkers; source++)
     {
-         MPI_Recv(&offset, 1, MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
-         MPI_Recv(&finalArr[offset], avgVals, MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
+         int buckets[numWorkers][avgVals];
+         MPI_Recv(&buckets, numWorkers*avgVals, MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
          printf("Received results from task %d\n",source);
+         printf("Bucket contents\n");
+         for (int i=0; i<numWorkers; i++) {
+           for (int j=0; j<avgVals; j++) {
+             if (buckets[i][j] != -1)
+               accumBuckets[i].push_back(buckets[i][j]);
+           }
+         }
     }
     
-    printf("final array: ");
+    // sort each row/bucket
+    for (int i=0; i<numWorkers; i++) {
+       std::sort(accumBuckets[i].begin(), accumBuckets[i].end());
+    }
+    
+    // concatenate results into final array
+    int finalIndex = 0;
+    for (int i=0; i<numWorkers; i++) {
+       for (int j=0; j<accumBuckets[i].size(); j++) {
+         finalArr[finalIndex] = accumBuckets[i][j];
+         finalIndex++;
+       }
+    }
+    
+    // check final array
+    printf("FINAL ARRAY\n");
     for (int num : finalArr) {
       printf("%d ", num);
     }
@@ -191,36 +206,54 @@ int main(int argc, char *argv[]) {
     
     // receive splitters and offset from master
     mtype = FROM_MASTER;
-    int localArr[avgVals];
-    MPI_Recv(&greaterThan, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
-    MPI_Recv(&lessThan, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
-    MPI_Recv(&offset, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
-    MPI_Recv(&mainArr, numValues, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
-    printf("task %d received greaterThan = %d, lessThan = %d, and offset = %d \n", taskid, greaterThan, lessThan, offset);
+    int splitters[numWorkers-1];
+    MPI_Recv(&splitters, numWorkers-1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
+    printf("task %d received splitters\n", taskid);
     
-    int localArrIndex = 0;
-    // find values that fall within range
-    for (int num: mainArr) {
-      if (num >= greaterThan && num < lessThan) {
-        localArr[localArrIndex] = num;
-        localArrIndex++;
-      }
-    }
-    
-    // sort local arr
-    int size = sizeof(localArr) / sizeof(localArr[0]);
-    std::sort(localArr, localArr + size);
-    
-    printf("localArr\n");
-    for (int num: localArr) {
-      printf("%d ", num);
+    printf("splitters\n");
+    for (int splitter: splitters) {
+      printf("%d ", splitter);
     }
     printf("\n");
     
-    // send results back to master
+    
+    int buckets[numWorkers][avgVals];
+    int arrIndex[numWorkers];
+    // initialize the entire array with -1 so we know which values aren't used
+    for (int i=0; i<numWorkers; i++) {
+      arrIndex[i]=0;
+      for (int j=0; j<avgVals; j++) {
+        buckets[i][j]= -1;
+      }
+    }
+
+    
+    int j;
+    for(int num : arr) {
+  		j = 0;
+  		while(j < numWorkers) {  // j being which process/bucket it should belong to
+  			if (j == numWorkers) {
+          // means it should go in last bucket
+          // makes sure that we don't try to access splitters[buckets.size()-1]. will go out of range
+          buckets[j][arrIndex[j]] = num;
+          printf("pushed %d into bucket %d\n", num, j);
+          arrIndex[j]++;
+          break;
+        }
+        if(num < splitters[j]) {
+  				buckets[j][arrIndex[j]] = num;
+          arrIndex[j]++;
+          printf("pushed %d into bucket %d\n", num, j);
+          break;
+  			}
+  			j++;
+  		}
+  	}
+   
+    // send buckets back to MASTER
     mtype = FROM_WORKER;
-    MPI_Send(&offset, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
-    MPI_Send(&localArr, avgVals, MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
+    MPI_Send(&buckets, numWorkers*avgVals, MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
+    
   }
   
   mgr.stop();
