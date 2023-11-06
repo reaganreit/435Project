@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <cmath>
 
 #include <caliper/cali.h>
 #include <caliper/cali-manager.h>
@@ -76,46 +77,72 @@ int main(int argc, char *argv[]) {
          offset = offset + workerValues;
     }
     
-    // receive values from workers
-    /*
+    // receive chosen samples from workers
     mtype = FROM_WORKER;
+    int totalSamples[(numWorkers-1)*numWorkers];
     for (source=1; source<=numWorkers; source++)
     {
-         int testArr[avgVals];
-         MPI_Recv(&testArr[0], avgVals, MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
+         MPI_Recv(&totalSamples[(numWorkers-1)*(source-1)], numWorkers-1, MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
          printf("Received results from task %d\n",source);
-         for (int num: testArr) {
-           printf("%d ", num); 
-           printf("\n");
-         }
     }
-    */
+    
+    printf("total sample: ");
+    for (int sample: totalSamples) {
+       printf("%d ", sample); 
+    }
+    printf("\n");
+    
   }
   
   
   if (taskid != MASTER) {
     //create array of size numWorkers-1 to store chosen samples
-    std::vector<int> chosenSamples(numWorkers-1);
+    int chosenSamples[numWorkers-1];
     // receive values from master
     mtype = FROM_MASTER;
     std::vector<int> arr(avgVals);
     MPI_Recv(&arr[0], avgVals, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
+    
+    /*
     printf("Received results for task %d\n", taskid);
     for (int num: arr) {
       printf("%d ", num); 
       printf("\n");
     }
+    */
     
     // locally sort arr with sequential sorting
     std::sort(arr.begin(), arr.end());
-    printf("sorted: ");
+    
+    /*
+    printf("sorted vector: ");
     for (int num: arr) {
       printf("%d ", num); 
       printf("\n");
     }
+    */
+    
     // choose samples and add to sampleArr
+    int spacing = std::ceil((float)avgVals/(float)numWorkers);
+    //printf("spacing: %d\n", spacing);
+    int index = spacing-1;
+    for (int i=0; i<numWorkers-1; i++) {
+      chosenSamples[i] = arr[index];
+      //printf("index: %d\n", index);
+      index += spacing;
+    }
+    
+    //printf("vector size: %d\n", chosenSamples.size());
+    //printf("num workers: %d\n", numWorkers);
+    printf("Chosen samples: ");
+    for (int sample: chosenSamples) {
+      printf("%d ", sample);
+    }
+    printf("\n");
     // All workers send their sample elements to master process
-    // MPI_Send sampleArr to MASTER
+    // MPI_Send chosenSamples to MASTER
+    mtype = FROM_WORKER;
+    MPI_Send(&chosenSamples, numWorkers-1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
   }
   
   /*
