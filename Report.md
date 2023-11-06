@@ -272,82 +272,143 @@ function main(argc, argv)
 end function
 
 **Merge Sort CUDA Pseudo**
-https://github.com/kevin-albert/cuda-mergesort
-function mergesort(data)
-    Initialize threadsPerBlock and blocksPerGrid
-    size = readList(data)
-    
-    D_data = allocateDeviceMemory(size)
-    D_swp = allocateDeviceMemory(size)
-    D_threads = allocateDeviceMemory(threadsPerBlock)
-    D_blocks = allocateDeviceMemory(blocksPerGrid)
-    
-    copyDataToDevice(data, D_data)
-    
-    A = D_data
-    B = D_swp
-    nThreads = calculateTotalThreads(threadsPerBlock, blocksPerGrid)
-    
-    for width = 2 to (size * 2) step width * 2
-        slices = size / (nThreads * width) + 1
-        call gpu_mergesort_kernel(A, B, size, width, slices, D_threads, D_blocks)
-        swap(A, B)
+https://feels2019.pdn.ac.lk/login/index.php
 
-    copyDataToHost(A, data)
-    freeDeviceMemory(D_data, D_swp, D_threads, D_blocks)
+# Function to check if a number is a power of 2
+function isPowerOfTwo(num):
+    i = 0
+    val = 1
+    while val <= num:
+        if val == num:
+            return true
+        i = i + 1
+        val = pow(2, i)
+    return false
 
-function gpu_mergesort_kernel(source, dest, size, width, slices, threads, blocks)
-    idx = getIdx(threads, blocks)
-    start = width * idx * slices
+# Main function
+function main(argc, argv):
+    SIZE = convert_to_integer(argv[2])
     
-    for slice = 0 to slices
-        if start >= size
-            break
-        middle = min(start + (width / 2), size)
-        end = min(start + width, size)
-        gpu_bottomUpMerge(source, dest, start, middle, end)
-        start += width
-
-function gpu_bottomUpMerge(source, dest, start, middle, end)
-    i = start
+    if not isPowerOfTwo(SIZE):
+        print("This implementation needs the list size to be a power of two")
+        exit(1)
+    
+    # Allocate a list of floats
+    list = allocate_memory(SIZE * sizeof(float))
+    
+    if list is null:
+        print("Memory full")
+        exit(1)
+    
+    # Generate random float values and populate the list
+    for i in range(SIZE):
+        list[i] = random_float()  # Generate a random float value
+    
+    # Print the input list
+    print("The input list is:")
+    for i in range(SIZE):
+        print("%.2f ", list[i])
+    print("\n")
+    
+    # CUDA stuff begins here
+    start = start_timer()
+    
+    # Allocate memory in CUDA
+    list_cuda = allocate_cuda_memory(SIZE * sizeof(float))
+    
+    # Copy memory from RAM to CUDA
+    copy_memory_to_cuda(list_cuda, list, SIZE * sizeof(float))
+    
+    # Thread configurations
+    threadsPerBlock = convert_to_integer(argv[1])
+    numBlocks = ceil(SIZE / (256 * 2))
+    
+    # Start measuring time for the CUDA kernel only
+    start_kernel = start_timer()
+    
+    # Perform merge sort using CUDA
+    mergesort<<<numBlocks, threadsPerBlock>>>(list_cuda, SIZE)
+    check_for_cuda_errors()
+    
+    # End measuring time for the CUDA kernel
+    stop_kernel = stop_timer()
+    
+    # Copy the answer back from CUDA to RAM
+    copy_memory_to_ram(list, list_cuda, SIZE * sizeof(float))
+    
+    # Free CUDA memory
+    free_cuda_memory(list_cuda)
+    
+    # End measuring time
+    stop = stop_timer()
+    
+    # CUDA stuff ends here
+    
+    # Print the sorted list
+    print("The sorted list is:")
+    for i in range(SIZE):
+        print("%.2f ", list[i])
+    print("\n")
+    
+    # Print the time spent to stderr
+    print("Time spent for CUDA kernel is %.5f seconds" % (elapsed_time_kernel / 1000))
+    print("Time spent for the CUDA operation (including memory allocation and copying) is %.5f seconds" % (elapsed_time / 1000))
+    
+# Function to merge two lists while sorting them in ascending order
+function merge(list, left, middle, right):
+    n = right - left + 1
+    temp = allocate_memory(n * sizeof(float))
+    assert(temp is not null, "Memory allocation failed")
+    
+    i = left
     j = middle
-    for k = start to end
-        if i < middle and (j >= end or source[i] < source[j])
-            dest[k] = source[i]
-            i++
-        else
-            dest[k] = source[j]
-            j++
-
-function readList(list)
-    size = 0
-    first = None
-    node = None
-    while read a value from stdin
-        create a new LinkNode with the value
-        if node is not None
-            set node.next to the new node
-        else
-            set first to the new node
-        set node to the new node
-        size++
+    k = 0
     
-    if size > 0
-        allocate memory for list of size
-        node = first
-        i = 0
-        while node is not None
-            set list[i] to node.value
-            move to the next node
-            increment i
+    while i < middle and j <= right:
+        if list[i] < list[j]:
+            temp[k] = list[i]
+            i = i + 1
+        else:
+            temp[k] = list[j]
+            j = j + 1
+        k = k + 1
     
-    return size
+    while i < middle:
+        temp[k] = list[i]
+        i = i + 1
+        k = k + 1
+    
+    while j <= right:
+        temp[k] = list[j]
+        j = j + 1
+        k = k + 1
+    
+    for i = left, k = 0, i <= right:
+        list[i] = temp[k]
+        i = i + 1
+        k = k + 1
+    
+    free_memory(temp)
 
-function tm()
-    current_time = get current time in microseconds
-    elapsed_time = current_time - previous_time
-    previous_time = current_time
-    return elapsed_time
+# Function to perform merge sort in ascending order
+function mergesort(list, SIZE):
+    tid = get_thread_index()
+    step = 1
+    
+    while step < SIZE - 1:
+        if tid % step == 0 and tid * 2 < SIZE:
+            left = 2 * tid
+            middle = 2 * tid + step
+            right = 2 * tid + 2 * step - 1
+            merge(list, left, middle, right)
+        
+        step = step * 2
+        synchronize_threads()
+
+# Define other required functions for CUDA memory allocation, copying, timing, etc.
+
+# Call the main function
+main(argc, argv)
 
 **Sample Sort CUDA Pseudo**
 https://github.com/SwayambhuNathRay/Sample-Sort-CUDA/blob/master/sample_sort.cu 
