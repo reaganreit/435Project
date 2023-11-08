@@ -1,6 +1,6 @@
 # CSCE 435 Group project
 
-## 0. Group number: 10
+## 0. Group number: 
 
 ## 1. Group members:
 1. Reagan Reitmeyer
@@ -17,8 +17,8 @@ Parallel sorting algorithms
 - Radix sort (MPI)
 - Merge sort (CUDA)
 - Merge sort (MPI)
-- Sample sort (CUDA)
-- Sample sort (MPI)
+- Quick sort (CUDA)
+- Quick sort (MPI)
 - Bitonic sort (CUDA)
 - Bitonic sort (MPI)
 
@@ -857,6 +857,7 @@ END FUNCTION
 - Strong scaling (same problem size, increase number of processors/nodes)
 - Weak scaling (increase problem size, increase number of processors)
 - Number of threads in a block on the GPU 
+
 
 ## 3. Project implementation
 Implement your proposed algorithms, and test them starting on a small scale.
