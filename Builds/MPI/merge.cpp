@@ -18,10 +18,13 @@ double commTime, compTime;
 const char* dataInitialization = "data_initialization";
 const char* commLarge = "comm_large";
 const char* compLarge = "comp_large";
-const char* checkSort = "check_sort";
+const char* correctnessCheck = "correctness_check";
 const char* comm = "comm";
 const char* comp = "comp";
 const char* mainCali = "main";
+const char* mpiBarrier = "barrier";
+const char* mpiScatter = "mpi_scatter";
+const char* mpiGather = "mpi_gather";
 
 /********** Merge Function **********/
 void merge(int *a, int *b, int l, int m, int r) {
@@ -107,13 +110,13 @@ void data_init(int* array, int n, int world_rank) {
 /********** Check Sorting **********/
 int check_sorted(int *array, int size) {
     checkSortStart = MPI_Wtime();
-    CALI_MARK_BEGIN(checkSort);
+    CALI_MARK_BEGIN(correctnessCheck);
     for (int i = 0; i < size - 1; i++) {
         if (array[i] > array[i + 1]) {
             return 0;
         }
     }
-    CALI_MARK_END(checkSort);
+    CALI_MARK_END(correctnessCheck);
     checkSortEnd = MPI_Wtime();
     return 1;
 }
@@ -156,7 +159,9 @@ int main(int argc, char** argv) {
     scatterStart = MPI_Wtime();
     CALI_MARK_BEGIN(comm);
     CALI_MARK_BEGIN(commLarge);
+    CALI_MARK_BEGIN(mpiScatter);
     MPI_Scatter(original_array, size, MPI_INT, sub_array, size, MPI_INT, 0, MPI_COMM_WORLD);
+    CALI_MARK_END(mpiScatter);
     CALI_MARK_END(commLarge);
     CALI_MARK_END(comm);
     scatterEnd = MPI_Wtime();
@@ -176,7 +181,9 @@ int main(int argc, char** argv) {
     gatherStart = MPI_Wtime();
     CALI_MARK_BEGIN(comm);
   	CALI_MARK_BEGIN(commLarge);
+    CALI_MARK_BEGIN(mpiGather);
    	MPI_Gather(sub_array, size, MPI_INT, sorted, size, MPI_INT, 0, MPI_COMM_WORLD);
+    CALI_MARK_END(mpiGather);
     CALI_MARK_END(commLarge);
     CALI_MARK_END(comm);
     gatherEnd = MPI_Wtime();
@@ -216,18 +223,21 @@ int main(int argc, char** argv) {
   	free(sub_array);
   	free(tmp_array);
  
+    CALI_MARK_BEGIN(mpiBarrier);
     MPI_Barrier(MPI_COMM_WORLD);
+    CALI_MARK_END(mpiBarrier);
     
     /********** Calculating and printing time *********/
+    dataInitTime = dataInitEnd - dataInitStart;
+    scatterTime = scatterEnd - scatterStart;
+    gatherTime = gatherEnd - gatherStart;
+    processMergeTime = processMergeEnd - processMergeStart;
+    finalMergeTime = finalMergeEnd - finalMergeStart;
+    checkSortTime = checkSortEnd - checkSortStart;
+    commTime = scatterTime + gatherTime;
+    compTime = processMergeTime + finalMergeTime;
+
     if (world_rank == 0) {
-        dataInitTime = dataInitEnd - dataInitStart;
-        scatterTime = scatterEnd - scatterStart;
-        gatherTime = gatherEnd - gatherStart;
-        processMergeTime = processMergeEnd - processMergeStart;
-        finalMergeTime = finalMergeEnd - finalMergeStart;
-        checkSortTime = checkSortEnd - checkSortStart;
-        commTime = scatterTime + gatherTime;
-        compTime = processMergeTime + finalMergeTime;
         printf("Data Initialization Time: %f seconds\n", dataInitTime);
         printf("Scatter Time: %f seconds\n", scatterTime);
         printf("Gather Time: %f seconds\n", gatherTime);
@@ -238,7 +248,8 @@ int main(int argc, char** argv) {
         printf("Computation Time: %f seconds\n", compTime);
     }
 
-    
+    CALI_MARK_END(mainCali);
+
     adiak::init(NULL);
     adiak::launchdate();    // launch date of the job
     adiak::libraries();     // Libraries used
@@ -246,25 +257,26 @@ int main(int argc, char** argv) {
     adiak::clustername();   // Name of the cluster
     adiak::value("Algorithm", "MergeSort"); // The name of the algorithm you are using (e.g., "MergeSort", "BitonicSort")
     adiak::value("ProgrammingModel", "MPI"); // e.g., "MPI", "CUDA", "MPIwithCUDA"
-    adiak::value("Datatype", "int"); // The datatype of input elements (e.g., double, int, float)
+    adiak::value("Datatype", int); // The datatype of input elements (e.g., double, int, float)
     adiak::value("SizeOfDatatype", sizeof(int)); // sizeof(datatype) of input elements in bytes (e.g., 1, 2, 4)
     adiak::value("InputSize", n); // The number of elements in input dataset (1000)
     adiak::value("InputType", "Random"); // For sorting, this would be "Sorted", "ReverseSorted", "Random", "1%perturbed"
     adiak::value("num_procs", world_size); // The number of processors (MPI ranks)
     adiak::value("group_num", 10); // The number of your group (integer, e.g., 1, 10)
     adiak::value("implementation_source", "Online"); // Where you got the source code of your algorithm; choices: ("Online", "AI", "Handwritten").
-    adiak::value("data_init_time", dataInitTime);
-    adiak::value("mpi_scatter_time", scatterTime);
-    adiak::value("mpi_gather_time", gatherTime);
-    adiak::value("processes_mergesort_time", processMergeTime);
-    adiak::value("final_merge_time", finalMergeTime);
-    adiak::value("validate_sorting_time", checkSortTime);
-    adiak::value("communication_time", commTime);
-    adiak::value("computation_time", compTime);
-    
+    adiak::value("data_init_time", dataInitialization);
+    adiak::value("correctness_check", correctnessCheck);
+    adiak::value("mpi_barrier", mpiBarrier);
+    adiak::value("communication_time", comm);
+    adiak::value("computation_time", comp);
+    adiak::value("communication_large_time", commLarge);
+    adiak::value("computation_large_time", compLarge);
+    adiak::value("mpi_scatter_time", mpiScatter);
+    adiak::value("mpi_gather_time", mpiGather);
+    adiak::value("main_time", mainCali);
+
     /********** Finalize MPI **********/    
     mgr.stop();
     mgr.flush();
 	MPI_Finalize();
-    CALI_MARK_END(mainCali);
 }
