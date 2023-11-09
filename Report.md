@@ -1,6 +1,6 @@
 # CSCE 435 Group project
 
-## 0. Group number: 10
+## 0. Group number: 
 
 ## 1. Group members:
 1. Reagan Reitmeyer
@@ -17,8 +17,8 @@ Parallel sorting algorithms
 - Radix sort (MPI)
 - Merge sort (CUDA)
 - Merge sort (MPI)
-- Sample sort (CUDA)
-- Sample sort (MPI)
+- Quick sort (CUDA)
+- Quick sort (MPI)
 - Bitonic sort (CUDA)
 - Bitonic sort (MPI)
 
@@ -349,195 +349,93 @@ function tm()
     previous_time = current_time
     return elapsed_time
 
-**Sample Sort CUDA Pseudo**
-https://github.com/SwayambhuNathRay/Sample-Sort-CUDA/blob/master/sample_sort.cu 
+**Quicksort CUDA Pseudo**
+https://forums.developer.nvidia.com/t/quick-sort-depth/35100
 
-// Constants
-n: total number of elements
-per_block: number of elements processed per block
+unsigned int *lptr = data + left;
+unsigned int *rptr = data + right;
+unsigned int  pivot = data[(left + right) / 2];
 
-// CUDA kernel for initial local sorting
-__global__ void sample_sort(int *A)
+// Do the partitioning.
+while (lptr <= rptr)
 {
-    loc[per_block]: shared memory array accessible to all threads within same thread block
-    int i: index to traverse the array A
-    int k: index to traverse elements in the shared memory array loc
-    loc[k] = A[i] //copying an element from A to shared memory array
-    __syncthreads();
-    int j;
-    
-    //general sorting alg within a block to perform pairwise comparisons of adjacent elements in loc to sort
-        //first phase: threads with even k values compare and potentially swap
-        //sec phase: threads with odd k values compare and potentially swap
-        //after each phase, __syncthreads()
-        //after each iteration of loop, sorted elements are written back to global mem A. Each thread updates value in A based on the sorted value in loc
+	// Find the next left- and right-hand values to swap
+	unsigned int lval = *lptr;
+	unsigned int rval = *rptr;
+
+	// Move the left pointer as long as the pointed element is smaller than the pivot.
+	while (lval < pivot)
+	{
+		lptr++;
+		lval = *lptr;
+	}
+
+	// Move the right pointer as long as the pointed element is larger than the pivot.
+	while (rval > pivot)
+	{
+		rptr--;
+		rval = *rptr;
+	}
+
+	// If the swap points are valid, do the swap!
+	if (lptr <= rptr)
+	{
+		*lptr++ = rval;
+		*rptr-- = lval;
+	}
 }
 
-// CUDA kernel for final merge and sorting
-__global__ void final_merge(int *A, int* S) //S is the info about the splitters
+// Now the recursive part
+int nright = rptr - data;
+int nleft = lptr - data;
+
+// Launch a new block to sort the left part.
+if (left < (rptr - data))
 {
-    //splitter range
-    int lower_limit
-    int upper_limit
-
-    //redistributes and sorts the locally stored data into final sorted order, using info from S to partition and sort the data. Data from each thread block is correctly ordered across entire dataset
-
+	cudaStream_t s;
+	cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
+	cdp_simple_quicksort << < 1, 1, 0, s >> >(data, left, nright, depth + 1);
+	cudaStreamDestroy(s);
 }
 
-// CPU based sorting, not GPU
-void merge(int *arr, int l, int m, int r)
+// Launch a new block to sort the right part.
+if ((lptr - data) < right)
 {
-    //merge two sorted subarrays into single sorted array
-}
-
-// CPU based sorting, not GPU bc efficient for large datasets
-void mergeSort(int *arr, int left, int right)
-{
-    // recursive merge sort
-}
-
-int main()
-{
-    // Host (CPU) memory allocation and data generation
-    // ...
-
-    // Device (GPU) memory allocation
-    // ...
-
-    // Measure time for serial merge sort on m_A
-    // ...
-
-    // Set up CUDA grid and block dimensions
-    // ...
-
-    // Measure time for parallel sorting using sample_sort kernel on d_A
-    // ...
-
-    // Sort the splitter array h_S on the CPU
-    // ...
-
-    // Generate array h_F to store final splitters
-    // ...
-
-    // Launch final_merge kernel on d_A, sending splitters from d_S
-    // ...
-
-    // Copy sorted data from device to host
-    // ...
-
-    // Free device memory
-    // ...
-
-    // Print the time taken for serial and parallel sorting
-    // ...
-
-    return 0;
+	cudaStream_t s1;
+	cudaStreamCreateWithFlags(&s1, cudaStreamNonBlocking);
+	cdp_simple_quicksort << < 1, 1, 0, s1 >> >(data, nleft, right, depth + 1);
+	cudaStreamDestroy(s1);
 }
 
 
+**Quicksort MPI Pseudo**
+https://www.codeproject.com/KB/threads/Parallel_Quicksort/Parallel_Quick_sort_without_merge.pdf 
 
-**Sample Sort MPI Pseudo**
+function sort_recursive(arr, size, pr_rank, max_rank, rank_index)
+    dtIn := MPI_Status
 
-int sampleSort(int argc, char *argv[]) {
-  int numValues, numProcs;
-  int taskid;
+    share_pr := pr_rank + 2^rank_index // Calculate the rank of the sharing process 
+    rank_index := rank_index + 1 // Increment the count index 
 
-	// get num of processors and values
-  if (argc == 2)
-  {
-      numValues = atoi(argv[1]);
-  }
-  else
-  {
-      printf("\n Please provide the size of the matrix");
-  }
-  
-  MPI_Init(&argc,&argv);
-  MPI_Comm_rank(MPI_COMM_WORLD,&taskid);
-  MPI_Comm_size(MPI_COMM_WORLD,&numProcs);
-  int numWorkers = numProcs - 1;
-  // initialize master process and generate array values
-  mainArr[numValues]
-  
-  // distribute numValues equally to each worker
-  if (MASTER) {
-    values = numValues/(numWorkers)
-    offset = 0;
-    MPI_Send {values} number of vals from mainArr to each worker
-    increment offset by vals
-    // receive values by workers
-    for (i=1; i<=numWorkers; i++)
-        {
-           MPI_Recv values
-    }
-  }
-  
-  if (worker) {
-    //create array of size numWorkers-1 to store chosen samples
-    sampleArr[numWorkers-1]
-    /*locally sort and pick samples from each worker
-      It chooses p-1 evenly spaced elements from the sorted block
-        So say for example there are 3 processes and 24 elements:
-          each process gets 8 elements and returns 2 (3-1) samples
-    */
-    choose samples and add to sampleArr
-    // All workers send their sample elements to master process
-    MPI_Send sampleArr to MASTER
-  }
-  
-  if (MASTER) {
-    // receive samples from workers
-    totalSamples[(numWorkers-1)(numWorkers)]
-    for (i=1; i<=numWorkers; i++)
-    {
-           MPI_Recv samples from WORKER
-           add received values to totalSamples
-    }
-    // Master process sequentially sorts the p(p-1) sample elements and selects p-1 splitters
-    splitters[numWorkers-1]
-    sort totalSamples
-    choose p-1 splitters and store in splitters array
-    // Master process broadcasts the splitters to all other processes
-    // splitters dictate what the start/end of each subarr should be
-    // make sure to maintain offset so process can write to main arr correctly
-    currSplitter = 0
-    for (i=1; i<=numWorkers; i++)
-    {
-           MPI_Send entire arr, and [start, splitters[currSplitter]) to each worker
-           MPI_Send offset to each worker
-           offset += values
-           start = splitters[currSplitter]
-           currSplitter++
-    }
-  }
-  
-  if (WORKER) {
-    // Receive arr, start, splitter, and offset from master
-    MPI_Recv arr from MASTER
-    MPI_Recv start from MASTER
-    MPI_Recv splitter from MASTER
-    MPI_Recv offset from MASTER
-    
-    localArr[values]
-    find values from arr that fall in between [start, splitter) and add to localArr
-    sort localArr
-    send localArr back to MASTER along with offset so it knows where to insert values
-    MPI_Send localArr to MASTER
-    MPI_Send offset to MASTER
-  }
-  
-  finalArr[numValues]
-  if (MASTER) {
-    for (i=1 ; i<=numWorkers; i++) {
-      MPI_Recv localArr
-      MPI_offset
-      insert localArr starting at finalArr[offset]
-    }
-  }
-    
-	return 0;
-}
+    if share_pr > max_rank // If no process to share, sort recursively sequentially 
+        sort_rec_seq(arr, size)
+        return 0
+    end if
 
+    pivot := arr[size / 2] // Select the pivot 
+    partition_pt := sequential_quicksort(arr, pivot, size, (size / 2) - 1) // Partition array 
+    offset := partition_pt + 1
+
+    if offset > size - offset
+        MPI_Send((arr + offset), size - offset, MPI_INT, share_pr, offset, MPI_COMM_WORLD)
+        sort_recursive(arr, offset, pr_rank, max_rank, rank_index)
+        MPI_Recv((arr + offset), size - offset, MPI_INT, share_pr, MPI_ANY_TAG, MPI_COMM_WORLD, dtIn)
+    else
+        MPI_Send(arr, offset, MPI_INT, share_pr, tag, MPI_COMM_WORLD)
+        sort_recursive((arr + offset), size - offset, pr_rank, max_rank, rank_index)
+        MPI_Recv(arr, offset, MPI_INT, share_pr, MPI_ANY_TAG, MPI_COMM_WORLD, dtIn)
+    end if
+end function
 
 
 **Bitonic Sort CUDA Pseudo**
@@ -796,6 +694,7 @@ END FUNCTION
 - Strong scaling (same problem size, increase number of processors/nodes)
 - Weak scaling (increase problem size, increase number of processors)
 - Number of threads in a block on the GPU 
+
 
 ## 3. Project implementation
 Implement your proposed algorithms, and test them starting on a small scale.

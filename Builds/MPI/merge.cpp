@@ -4,17 +4,24 @@
 #include <mpi.h>
 #include <caliper/cali.h>
 #include <caliper/cali-manager.h>
+#include <adiak.hpp>
 
-void merge(int *, int *, int, int, int);
-void mergeSort(int *, int *, int, int);
+double dataInitStart, dataInitEnd, dataInitTime;
+double scatterStart, scatterEnd, scatterTime;
+double gatherStart, gatherEnd, gatherTime;
+double processMergeStart, processMergeEnd, processMergeTime;
+double finalMergeStart, finalMergeEnd, finalMergeTime;
+double checkSortStart, checkSortEnd, checkSortTime;
+double commTime, compTime;
 
-double wholeSortStart, wholeSortEnd, sortStepStart, sortStepEnd, wholeSortTime, sortStepTime, workDivStart, workDivEnd, workDivTime, gatherStart, gatherEnd, gatherTime;
-
-//Caliper regions
-const char* wholeSort = "whole_sort";
-const char* sortStep = "sort_step";
-const char* workDivision = "work_division";
-const char* gather = "gather";
+/********** Caliper Regions **********/
+const char* dataInitialization = "data_initialization";
+const char* commLarge = "comm_large";
+const char* compLarge = "comp_large";
+const char* checkSort = "check_sort";
+const char* comm = "comm";
+const char* comp = "comp";
+const char* mainCali = "main";
 
 /********** Merge Function **********/
 void merge(int *a, int *b, int l, int m, int r) {
@@ -68,121 +75,193 @@ void mergeSort(int *a, int *b, int l, int r) {
 	}
 }
 
+/********** Data Initialization **********/
+void data_init(int* array, int n, int world_rank) {
+    if (world_rank == 0) {
+        //random
+        srand(time(NULL));
+        for (int i = 0; i < n; i++) {
+            array[i] = rand() % 5000;
+        }
+        /**
+        //sorted
+        for (int i = 0; i < n; i++) {
+            array[i] = i;
+        }
+        //reverse sorted
+        for (int i = n; i >= 0; i--) {
+            array[i] = i;
+        }
+        **/
+    }
+}
+
+/********** Check Sorting **********/
+int check_sorted(int *array, int size) {
+    CALI_MARK_BEGIN(checkSort);
+    checkSortStart = MPI_Wtime();
+    for (int i = 0; i < size - 1; i++) {
+        if (array[i] > array[i + 1]) {
+            return 0;
+        }
+    }
+    checkSortEnd = MPI_Wtime();
+    CALI_MARK_END(checkSort);
+    return 1;
+}
+
 int main(int argc, char** argv) {
-  /********** Initialize MPI **********/
-	int world_rank;
-	int world_size;
-	
-	MPI_Init(&argc, &argv);
-	MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    CALI_MARK_BEGIN(mainCali);
+    /********** Initialize MPI **********/
+  	int world_rank;
+  	int world_size;
+  	
+  	MPI_Init(&argc, &argv);
+  	MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+  	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
  
-  //config manager
-  cali::ConfigManager mgr;
-  mgr.start();
+    //config manager
+    cali::ConfigManager mgr;
+    mgr.start();
  
-	/********** Create and populate the array **********/
-	int n = atoi(argv[1]);
-	int* original_array = static_cast<int*>(malloc(n * sizeof(int)));
-	
-	int c;
- 
-  if(world_rank == 0) {
-    srand(time(NULL));
-  	printf("This is the unsorted array: ");
-   
-  	for(c = 0; c < n; c++) {
-  		original_array[c] = rand() % n;
-  		printf("%d ", original_array[c]);
+  	/********** Data Initialization **********/
+  	int n = atoi(argv[1]);
+  	int* original_array = static_cast<int*>(malloc(n * sizeof(int)));
+    
+    if (world_rank == 0) {
+        CALI_MARK_BEGIN(dataInitialization);
+        dataInitStart = MPI_Wtime();
+        data_init(original_array, n, world_rank);
+        dataInitEnd = MPI_Wtime();
+        CALI_MARK_END(dataInitialization);
+        
+        printf("This is the unsorted array: ");
+        for (int c = 0; c < n; c++) {
+            printf("%d ", original_array[c]);
+        }
+        printf("\n");
+    }
+    
+    //dividing array into equal sized chunks and sending data to each process
+    int size = n/world_size;
+    int *sub_array = static_cast<int*>(malloc(size * sizeof(int)));
+    CALI_MARK_BEGIN(comm);
+    CALI_MARK_BEGIN(commLarge);
+    scatterStart = MPI_Wtime();
+    MPI_Scatter(original_array, size, MPI_INT, sub_array, size, MPI_INT, 0, MPI_COMM_WORLD);
+    scatterEnd = MPI_Wtime();
+    CALI_MARK_END(commLarge);
+    CALI_MARK_END(comm);
+    
+    /********** Each process does merge sort **********/
+  	int *tmp_array = static_cast<int*>(malloc(size * sizeof(int)));
+    CALI_MARK_BEGIN(comp);
+    CALI_MARK_BEGIN(compLarge);
+    processMergeStart = MPI_Wtime();
+  	mergeSort(sub_array, tmp_array, 0, (size - 1));
+    processMergeEnd = MPI_Wtime();
+    CALI_MARK_END(compLarge);
+    CALI_MARK_END(comp);
+    
+  	/********** Gather the sorted subarrays into one **********/
+  	int *sorted = NULL;
+  	if(world_rank == 0) {
+        sorted = static_cast<int*>(malloc(n * sizeof(int)));
   	}
-    printf("\n");
-  }
-		
-	/********** Divide the array in equal-sized chunks **********/
-	int size = n/world_size;
-	
-	// WORK DIVISION START
-  CALI_MARK_BEGIN(workDivision);
-  workDivStart = MPI_Wtime();
-	int *sub_array = static_cast<int*>(malloc(size * sizeof(int)));
-	MPI_Scatter(original_array, size, MPI_INT, sub_array, size, MPI_INT, 0, MPI_COMM_WORLD);
-  workDivEnd = MPI_Wtime();
-  CALI_MARK_END(workDivision);
-  // WORK DIVISION END
-	
- 
-  // TOTAL SORT TIME START
-  CALI_MARK_BEGIN(wholeSort);
-  wholeSortStart = MPI_Wtime();
-  
-	// WORKER STEP SORT START
-  CALI_MARK_BEGIN(sortStep);
-  sortStepStart = MPI_Wtime();
-	int *tmp_array = static_cast<int*>(malloc(size * sizeof(int)));
-	mergeSort(sub_array, tmp_array, 0, (size - 1));
-  // WORKER STEP SORT END
-  sortStepEnd = MPI_Wtime();
-  CALI_MARK_END(sortStep);
-	
-	/********** Gather the sorted subarrays into one **********/
-	int *sorted = NULL;
-	if(world_rank == 0) {
-		sorted = static_cast<int*>(malloc(n * sizeof(int)));
-	}
-	
-  CALI_MARK_BEGIN(gather);
-  gatherStart = MPI_Wtime();
-	MPI_Gather(sub_array, size, MPI_INT, sorted, size, MPI_INT, 0, MPI_COMM_WORLD);
-	gatherEnd = MPI_Wtime();
-  CALI_MARK_END(gather);
+    
+    CALI_MARK_BEGIN(comm);
+  	CALI_MARK_BEGIN(commLarge);
+    gatherStart = MPI_Wtime();
+   	MPI_Gather(sub_array, size, MPI_INT, sorted, size, MPI_INT, 0, MPI_COMM_WORLD);
+    gatherEnd = MPI_Wtime();
+    CALI_MARK_END(commLarge);
+    CALI_MARK_END(comm);
   
 	/********** Make the final mergeSort call **********/
-	if(world_rank == 0) {
-		int *other_array = static_cast<int*>(malloc(n * sizeof(int)));
-		mergeSort(sorted, other_array, 0, (n - 1));
-   
-    // TOTAL SORT TIME END
-    wholeSortEnd = MPI_Wtime();
-	  CALI_MARK_END(wholeSort);	
-   
-		/********** Display the sorted array **********/
-		printf("This is the sorted array: ");
-		for(c = 0; c < n; c++) {
-			printf("%d ", sorted[c]);
+	  if(world_rank == 0) {
+    		int *other_array = static_cast<int*>(malloc(n * sizeof(int)));
+        CALI_MARK_BEGIN(comp);
+        CALI_MARK_BEGIN(compLarge);
+        finalMergeStart = MPI_Wtime();
+    		mergeSort(sorted, other_array, 0, (n - 1));
+        finalMergeEnd = MPI_Wtime();
+        CALI_MARK_END(compLarge);
+        CALI_MARK_END(comp);
+        
+        /********** Check if sorted and print **********/
+        if (check_sorted(sorted, n)) {
+          // Display the sorted array
+          printf("This is the sorted array: ");
+          for (int c = 0; c < n; c++) {
+              printf("%d ", sorted[c]);
+          }
+        }
+        else {
+            printf("Error: The array is not sorted.\n");
+        }
+        
+        printf("\n\n");
+    			
+    		/********** Clean up root **********/
+    		free(sorted);
+    		free(other_array);
 		}
-			
-		printf("\n");
-		printf("\n");
-			
-		/********** Clean up root **********/
-		free(sorted);
-		free(other_array);
-		}
 	
-	/********** Clean up rest **********/
-	free(original_array);
-	free(sub_array);
-	free(tmp_array);
+  	/********** Clean up rest **********/
+  	free(original_array);
+  	free(sub_array);
+  	free(tmp_array);
  
-  MPI_Barrier(MPI_COMM_WORLD);
- 
-  //COMPUTE TIME
-  wholeSortTime = wholeSortEnd - wholeSortStart;
-  sortStepTime = sortStepEnd - sortStepStart;
-  workDivTime = workDivEnd - workDivStart;
-  gatherTime = gatherEnd - gatherStart;
-  
-  //Printing Times
-  if (world_rank == 0) {
-    std::cout << "whole sort time: " << wholeSortTime << std::endl;
-    std::cout << "sort step time: " << sortStepTime << std::endl;
-    std::cout << "work div time: " << workDivTime << std::endl;
-    std::cout << "gather time: " << gatherTime << std::endl;
-  }
-	
-	/********** Finalize MPI **********/
-	
-  mgr.stop();
-  mgr.flush();
-	MPI_Finalize();
+    MPI_Barrier(MPI_COMM_WORLD);
+    
+    /********** Calculating and printing time *********/
+    dataInitTime = dataInitEnd - dataInitStart;
+    scatterTime = scatterEnd - scatterStart;
+    gatherTime = gatherEnd - gatherStart;
+    processMergeTime = processMergeEnd - processMergeStart;
+    finalMergeTime = finalMergeEnd - finalMergeStart;
+    checkSortTime = checkSortEnd - checkSortStart;
+    commTime = scatterTime + gatherTime;
+    compTime = processMergeTime + finalMergeTime;
+    
+    if (world_rank == 0) {
+        printf("Data Initialization Time: %f seconds\n", dataInitTime);
+        printf("Scatter Time: %f seconds\n", scatterTime);
+        printf("Gather Time: %f seconds\n", gatherTime);
+        printf("Process Merge Time: %f seconds\n", processMergeTime);
+        printf("Final Merge Time: %f seconds\n", finalMergeTime);
+        printf("Check Sort Time: %f seconds\n", checkSortTime);
+        printf("Communication Time: %f seconds\n", commTime);
+        printf("Computation Time: %f seconds\n", compTime);
+    }
+
+    
+    adiak::init(NULL);
+    adiak::launchdate();    // launch date of the job
+    adiak::libraries();     // Libraries used
+    adiak::cmdline();       // Command line used to launch the job
+    adiak::clustername();   // Name of the cluster
+    adiak::value("Algorithm", "MergeSort"); // The name of the algorithm you are using (e.g., "MergeSort", "BitonicSort")
+    adiak::value("ProgrammingModel", "MPI"); // e.g., "MPI", "CUDA", "MPIwithCUDA"
+    adiak::value("Datatype", "int"); // The datatype of input elements (e.g., double, int, float)
+    adiak::value("SizeOfDatatype", sizeof(int)); // sizeof(datatype) of input elements in bytes (e.g., 1, 2, 4)
+    adiak::value("InputSize", n); // The number of elements in input dataset (1000)
+    adiak::value("InputType", "Random"); // For sorting, this would be "Sorted", "ReverseSorted", "Random", "1%perturbed"
+    adiak::value("num_procs", world_size); // The number of processors (MPI ranks)
+    adiak::value("group_num", 10); // The number of your group (integer, e.g., 1, 10)
+    adiak::value("implementation_source", "Online"); // Where you got the source code of your algorithm; choices: ("Online", "AI", "Handwritten").
+    adiak::value("data_init_time", dataInitTime);
+    adiak::value("mpi_scatter_time", scatterTime);
+    adiak::value("mpi_gather_time", gatherTime);
+    adiak::value("processes_mergesort_time", processMergeTime);
+    adiak::value("final_merge_time", finalMergeTime);
+    adiak::value("validate_sorting_time", checkSortTime);
+    adiak::value("communication_time", commTime);
+    adiak::value("computation_time", compTime);
+    
+    /********** Finalize MPI **********/    
+    mgr.stop();
+    mgr.flush();
+	  MPI_Finalize();
+    CALI_MARK_END(mainCali);
 }

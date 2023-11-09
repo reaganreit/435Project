@@ -2,8 +2,8 @@
  * \file sort.seq.cpp
  */
 
-#include "common.h"
-#include "common.cpp"
+//#include "common.h"
+//#include "common.cpp"
 #include <stdlib.h>
 #include <vector>
 #include <limits>
@@ -12,11 +12,33 @@
 #include <sstream>
 #include <mpi.h>
 #include <cstring>
+#include <time.h>
+#include <caliper/cali.h>
+#include <caliper/cali-manager.h>
+#include <adiak.hpp>
 using namespace std;
 
 
 // given a key and a mask, calcs the bucket to where the key belongs
 #define GET_BUCKET_NUM(elem, mask, g, i) (((elem) & (mask)) >> ((g) * (i)))
+
+#define LEN 10
+
+
+//Caliper regions
+const char* main_region = "main";
+const char* data_init = "data_init";
+const char* comp = "comp";
+const char* comm = "comm";
+const char* comp_small = "comp_small";
+const char* comm_small = "comm_small";
+const char* comp_large = "comp_large";
+const char* comm_large = "comm_large";
+const char* correctness_check = "correctness_check";
+
+//timers
+double data_init_start, data_init_end, comp_small_start, comp_small_end, comm_small_start, comm_small_end, comm_large_start, comm_large_end, comp_large_start, comp_large_end, correctness_check_start, correctness_check_end; 
+
 
 enum OrderCodes {
 	ORDER_CORRECT = 0,
@@ -32,12 +54,12 @@ enum Tags {
 	TAG_BUCKET_COUNT = 5,
 };
 
-/**
+
 void test_data(vector<unsigned int> *arr, int id, int size) {
 	srand(time(NULL) * (id + 1));
 	for(unsigned int i = 0; i < arr->size(); ++i)
 		(*arr)[i] = rand() % 1000;
-}**/
+}
 
 // count number of bits set to 1 in a number
 unsigned int popcount(unsigned int x) {
@@ -90,8 +112,11 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
 
 	for(unsigned int round = 0; mask != 0; mask <<= g, ++round) {
 		// CALCULATE BUCKET COUNTS
+   CALI_MARK_BEGIN(comp);
 
 		// clear buckets
+   CALI_MARK_BEGIN(comp_large);
+   comp_large_start = MPI_Wtime();
 		for(unsigned int i = 0; i < b; ++i) {
 			bucket_counts_aux[i] = 0;
 			bucket_counts[i][id] = 0;
@@ -106,9 +131,15 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
 			bucket_counts[bucket][id]++;
 			buckets[bucket].push_back(elem);
 		}
+   comp_large_end = MPI_Wtime();
+   CALI_MARK_END(comp_large);
+   CALI_MARK_END(comp);
 
 		// SEND/RECV BUCKET COUNTS
-
+   CALI_MARK_BEGIN(comm);
+    
+    CALI_MARK_BEGIN(comm_large);
+    comm_large_start = MPI_Wtime();
 		// sends my bucket counts to all other processes
 		for(unsigned int i = 0; i < p; ++i) {
 			if (i != id)
@@ -123,8 +154,16 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
 					bucket_counts[k][i] = bucket_counts_aux[k];
 			}
 		}
+   comm_large_end = MPI_Wtime();
+   CALI_MARK_END(comm_large);
+  
+   CALI_MARK_END(comm);
+   
 
 		// CALCULATE BUCKET_ACCUMS
+   CALI_MARK_BEGIN(comp);
+   CALI_MARK_BEGIN(comp_small);
+   comp_small_start = MPI_Wtime();
 
 		// count total size of bucket for this process, and alloc it. also compute bucket_accum
 		int total_bucket_size = 0;
@@ -139,10 +178,17 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
 			}
 			bucket_sizes[i] = single_bucket_size;
 		}
-
+   comp_small_end = MPI_Wtime();
+   CALI_MARK_END(comp_small);
+  
+    CALI_MARK_END(comp);
+    
 		this_bucket = new vector<unsigned int>(total_bucket_size);
 
 		// send keys across each process
+   CALI_MARK_BEGIN(comm);
+   CALI_MARK_BEGIN(comm_small);
+   comm_small_start = MPI_Wtime();
 		for(unsigned int i = 0; i < b; ++i) {
 			unsigned int dest = BUCKET_TO_CPU(i);
 			unsigned int local_bucket = BUCKET_IN_CPU(i);
@@ -173,6 +219,9 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
 				}
 			}
 		}
+   comm_small_end = MPI_Wtime();
+   CALI_MARK_END(comm_small);
+   CALI_MARK_END(comm);
 
 		delete arr;
 		arr = this_bucket;
@@ -241,7 +290,7 @@ void ordered_print(char *str, unsigned int id, unsigned int size) {
 }
 
 int main(int argc, char **argv) {
-	
+	CALI_MARK_BEGIN(main_region);
 	int g = 4;
 
 	char msg[MSG_SIZE];
@@ -250,33 +299,45 @@ int main(int argc, char **argv) {
 	MPI_Comm_rank(MPI_COMM_WORLD, &id);
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-	Timer timer;
 	int len;
 	stringstream ss;
 
-	if (argc > 1)	len = atoi(argv[1]);
+	if (argc > 1){
+  	len = atoi(argv[1]);
+     g= size;
+   }
 	else			len = LEN;
 
 	if (argc > 2)	g = atoi(argv[2]);
 
 	if (id == 0) cerr << "mask size = " << g << endl << endl;
-
+ 
+  CALI_MARK_BEGIN(data_init);
+  data_init_start = MPI_Wtime();
 	vector<unsigned int> *arr = new vector<unsigned int>(len / size);
 	// generate test data
-	read_arr(*arr, (len/g)*id);
+   test_data(arr, id, (len/size)); 
+   data_init_end = MPI_Wtime();
+   CALI_MARK_END(data_init);
 
 	// the real stuff
 	if (id == 0) cerr << "starting radix sort...";
 	MPI_Barrier(MPI_COMM_WORLD);
-	timer.start();
+//	timer.start();
 	radix_mpi(arr, id, size, g);
-	timer.stop();
+//	timer.stop();
 	MPI_Barrier(MPI_COMM_WORLD);
 	if (id == 0) cerr << "finished" << endl << endl;
+ 
 
 	MPI_Barrier(MPI_COMM_WORLD);
 	// check array order
-	int order = ORDER_CORRECT;//check_array_order(arr, id, size);
+  CALI_MARK_BEGIN(correctness_check);
+  correctness_check_start = MPI_Wtime();
+	int order = check_array_order(arr, id, size);
+  correctness_check_end = MPI_Wtime();
+  CALI_MARK_END(correctness_check);
+  
 	switch (order) {
 		case ORDER_CORRECT: 	cerr << "CORRECT! Result is ordered" << endl; break;
 		case ORDER_ONLY_MASTER: break;
@@ -284,16 +345,72 @@ int main(int argc, char **argv) {
 	}
 
 	// print time for each process
-	sprintf(msg, "%lf, ", timer.get() * 1.0e-3);
-	ordered_print(msg, id, size);
+	//sprintf(msg, "%lf, ", 0); // timer.get() * 1.0e-3);
+	//ordered_print(msg, id, size);
  
  if (id == 0) {
+   cout << "\n";
     cout << "Sorted Array: ";
     for (unsigned int i = 0; i < arr->size(); ++i) {
         cout << (*arr)[i] << " ";
     }
     cout << endl;
   }
+  
+  const char* algorithm ="RadixSort";
+  const char* programmingModel = "MPI"; 
+  const char* datatype = "int"; 
+  int sizeOfDatatype =4;
+  int inputSize =1000; 
+  const char* inputType= "Random";
+  int num_procs = size; 
+  int group_number =10;
+  const char* implementation_source = "Online"; 
+  
+  float data_init_time = data_init_end - data_init_start;
+  float comm_small_time = comm_small_end - comm_small_start;
+  float comm_large_time = comm_large_end - comm_large_start;
+  float comp_small_time = comp_small_end - comp_small_start;
+  float comp_large_time = comp_large_end - comp_large_start;
+  float correctness_check_time = correctness_check_end - correctness_check_start;
+  float comm_time = comm_large_time + comm_small_time;
+  float comp_time = comp_large_time + comp_small_time;
+
+  adiak::init(NULL);
+  adiak::launchdate();    // launch date of the job
+  adiak::libraries();     // Libraries used
+  adiak::cmdline();       // Command line used to launch the job
+  adiak::clustername();   // Name of the cluster
+  adiak::value("Algorithm", algorithm); // The name of the algorithm you are using (e.g., "MergeSort", "BitonicSort")
+  adiak::value("ProgrammingModel", programmingModel); // e.g., "MPI", "CUDA", "MPIwithCUDA"
+  adiak::value("Datatype", datatype); // The datatype of input elements (e.g., double, int, float)
+  adiak::value("SizeOfDatatype", sizeOfDatatype); // sizeof(datatype) of input elements in bytes (e.g., 1, 2, 4)
+  adiak::value("InputSize", inputSize); // The number of elements in input dataset (1000)
+  adiak::value("InputType", inputType); // For sorting, this would be "Sorted", "ReverseSorted", "Random", "1%perturbed"
+  adiak::value("num_procs", num_procs); // The number of processors (MPI ranks)
+  //adiak::value("num_threads", num_threads); // The number of CUDA or OpenMP threads
+  //adiak::value("num_blocks", num_blocks); // The number of CUDA blocks 
+  adiak::value("group_num", group_number); // The number of your group (integer, e.g., 1, 10)
+  adiak::value("implementation_source", implementation_source); // Where you got the source code of your algorithm; choices: ("Online", "AI", "Handwritten").
+  
+  adiak::value("data_init_time", data_init_time);
+  adiak::value("comm_time", comm_time);
+  adiak::value("comp_time", comp_time);
+  adiak::value("comm_small_time", comm_small_time);
+  adiak::value("comm_large_time", comm_large_time);
+  adiak::value("comp_small_time", comp_small_time);
+  adiak::value("comp_large_time", comp_large_time);
+  adiak::value("correctness_check_time", correctness_check_time);
+  
+  if (id == 0) {
+    printf("\n");
+    printf("comm_small_time: %f \n", comm_small_time);
+    printf("comm_large_time: %f \n", comm_large_time);
+    printf("comp_small_time: %f \n", comp_small_time);
+    printf("comp_large_time: %f \n", comp_large_time);
+  }
+  
 
 	MPI_Finalize();
+ CALI_MARK_END(main_region);
 }
