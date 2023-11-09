@@ -299,6 +299,9 @@ int main(int argc, char **argv) {
 	MPI_Comm_rank(MPI_COMM_WORLD, &id);
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
+	cali::ConfigManager mgr;
+    mgr.start();
+
 	int len;
 	stringstream ss;
 
@@ -410,7 +413,8 @@ int main(int argc, char **argv) {
     printf("comp_large_time: %f \n", comp_large_time);
   }
   
-
+	mgr.stop();
+    mgr.flush();
 	MPI_Finalize();
  CALI_MARK_END(main_region);
 }
