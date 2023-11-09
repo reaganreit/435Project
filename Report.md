@@ -1,6 +1,6 @@
 # CSCE 435 Group project
 
-## 0. Group number: 
+## 0. Group number: 10
 
 ## 1. Group members:
 1. Reagan Reitmeyer
@@ -17,8 +17,8 @@ Parallel sorting algorithms
 - Radix sort (MPI)
 - Merge sort (CUDA)
 - Merge sort (MPI)
-- Quick sort (CUDA)
-- Quick sort (MPI)
+- Sample sort (CUDA)
+- Sample sort (MPI)
 - Bitonic sort (CUDA)
 - Bitonic sort (MPI)
 
@@ -272,170 +272,333 @@ function main(argc, argv)
 end function
 
 **Merge Sort CUDA Pseudo**
-https://github.com/kevin-albert/cuda-mergesort
-function mergesort(data)
-    Initialize threadsPerBlock and blocksPerGrid
-    size = readList(data)
-    
-    D_data = allocateDeviceMemory(size)
-    D_swp = allocateDeviceMemory(size)
-    D_threads = allocateDeviceMemory(threadsPerBlock)
-    D_blocks = allocateDeviceMemory(blocksPerGrid)
-    
-    copyDataToDevice(data, D_data)
-    
-    A = D_data
-    B = D_swp
-    nThreads = calculateTotalThreads(threadsPerBlock, blocksPerGrid)
-    
-    for width = 2 to (size * 2) step width * 2
-        slices = size / (nThreads * width) + 1
-        call gpu_mergesort_kernel(A, B, size, width, slices, D_threads, D_blocks)
-        swap(A, B)
+https://feels2019.pdn.ac.lk/login/index.php
 
-    copyDataToHost(A, data)
-    freeDeviceMemory(D_data, D_swp, D_threads, D_blocks)
+# Function to check if a number is a power of 2
+function isPowerOfTwo(num):
+    i = 0
+    val = 1
+    while val <= num:
+        if val == num:
+            return true
+        i = i + 1
+        val = pow(2, i)
+    return false
 
-function gpu_mergesort_kernel(source, dest, size, width, slices, threads, blocks)
-    idx = getIdx(threads, blocks)
-    start = width * idx * slices
+# Main function
+function main(argc, argv):
+    SIZE = convert_to_integer(argv[2])
     
-    for slice = 0 to slices
-        if start >= size
-            break
-        middle = min(start + (width / 2), size)
-        end = min(start + width, size)
-        gpu_bottomUpMerge(source, dest, start, middle, end)
-        start += width
-
-function gpu_bottomUpMerge(source, dest, start, middle, end)
-    i = start
+    if not isPowerOfTwo(SIZE):
+        print("This implementation needs the list size to be a power of two")
+        exit(1)
+    
+    # Allocate a list of floats
+    list = allocate_memory(SIZE * sizeof(float))
+    
+    if list is null:
+        print("Memory full")
+        exit(1)
+    
+    # Generate random float values and populate the list
+    for i in range(SIZE):
+        list[i] = random_float()  # Generate a random float value
+    
+    # Print the input list
+    print("The input list is:")
+    for i in range(SIZE):
+        print("%.2f ", list[i])
+    print("\n")
+    
+    # CUDA stuff begins here
+    start = start_timer()
+    
+    # Allocate memory in CUDA
+    list_cuda = allocate_cuda_memory(SIZE * sizeof(float))
+    
+    # Copy memory from RAM to CUDA
+    copy_memory_to_cuda(list_cuda, list, SIZE * sizeof(float))
+    
+    # Thread configurations
+    threadsPerBlock = convert_to_integer(argv[1])
+    numBlocks = ceil(SIZE / (256 * 2))
+    
+    # Start measuring time for the CUDA kernel only
+    start_kernel = start_timer()
+    
+    # Perform merge sort using CUDA
+    mergesort<<<numBlocks, threadsPerBlock>>>(list_cuda, SIZE)
+    check_for_cuda_errors()
+    
+    # End measuring time for the CUDA kernel
+    stop_kernel = stop_timer()
+    
+    # Copy the answer back from CUDA to RAM
+    copy_memory_to_ram(list, list_cuda, SIZE * sizeof(float))
+    
+    # Free CUDA memory
+    free_cuda_memory(list_cuda)
+    
+    # End measuring time
+    stop = stop_timer()
+    
+    # CUDA stuff ends here
+    
+    # Print the sorted list
+    print("The sorted list is:")
+    for i in range(SIZE):
+        print("%.2f ", list[i])
+    print("\n")
+    
+    # Print the time spent to stderr
+    print("Time spent for CUDA kernel is %.5f seconds" % (elapsed_time_kernel / 1000))
+    print("Time spent for the CUDA operation (including memory allocation and copying) is %.5f seconds" % (elapsed_time / 1000))
+    
+# Function to merge two lists while sorting them in ascending order
+function merge(list, left, middle, right):
+    n = right - left + 1
+    temp = allocate_memory(n * sizeof(float))
+    assert(temp is not null, "Memory allocation failed")
+    
+    i = left
     j = middle
-    for k = start to end
-        if i < middle and (j >= end or source[i] < source[j])
-            dest[k] = source[i]
-            i++
-        else
-            dest[k] = source[j]
-            j++
-
-function readList(list)
-    size = 0
-    first = None
-    node = None
-    while read a value from stdin
-        create a new LinkNode with the value
-        if node is not None
-            set node.next to the new node
-        else
-            set first to the new node
-        set node to the new node
-        size++
+    k = 0
     
-    if size > 0
-        allocate memory for list of size
-        node = first
-        i = 0
-        while node is not None
-            set list[i] to node.value
-            move to the next node
-            increment i
+    while i < middle and j <= right:
+        if list[i] < list[j]:
+            temp[k] = list[i]
+            i = i + 1
+        else:
+            temp[k] = list[j]
+            j = j + 1
+        k = k + 1
     
-    return size
+    while i < middle:
+        temp[k] = list[i]
+        i = i + 1
+        k = k + 1
+    
+    while j <= right:
+        temp[k] = list[j]
+        j = j + 1
+        k = k + 1
+    
+    for i = left, k = 0, i <= right:
+        list[i] = temp[k]
+        i = i + 1
+        k = k + 1
+    
+    free_memory(temp)
 
-function tm()
-    current_time = get current time in microseconds
-    elapsed_time = current_time - previous_time
-    previous_time = current_time
-    return elapsed_time
+# Function to perform merge sort in ascending order
+function mergesort(list, SIZE):
+    tid = get_thread_index()
+    step = 1
+    
+    while step < SIZE - 1:
+        if tid % step == 0 and tid * 2 < SIZE:
+            left = 2 * tid
+            middle = 2 * tid + step
+            right = 2 * tid + 2 * step - 1
+            merge(list, left, middle, right)
+        
+        step = step * 2
+        synchronize_threads()
 
-**Quicksort CUDA Pseudo**
-https://forums.developer.nvidia.com/t/quick-sort-depth/35100
+# Define other required functions for CUDA memory allocation, copying, timing, etc.
 
-unsigned int *lptr = data + left;
-unsigned int *rptr = data + right;
-unsigned int  pivot = data[(left + right) / 2];
+# Call the main function
+main(argc, argv)
 
-// Do the partitioning.
-while (lptr <= rptr)
+**Sample Sort CUDA Pseudo**
+https://github.com/SwayambhuNathRay/Sample-Sort-CUDA/blob/master/sample_sort.cu 
+
+// Constants
+n: total number of elements
+per_block: number of elements processed per block
+
+// CUDA kernel for initial local sorting
+__global__ void sample_sort(int *A)
 {
-	// Find the next left- and right-hand values to swap
-	unsigned int lval = *lptr;
-	unsigned int rval = *rptr;
-
-	// Move the left pointer as long as the pointed element is smaller than the pivot.
-	while (lval < pivot)
-	{
-		lptr++;
-		lval = *lptr;
-	}
-
-	// Move the right pointer as long as the pointed element is larger than the pivot.
-	while (rval > pivot)
-	{
-		rptr--;
-		rval = *rptr;
-	}
-
-	// If the swap points are valid, do the swap!
-	if (lptr <= rptr)
-	{
-		*lptr++ = rval;
-		*rptr-- = lval;
-	}
+    loc[per_block]: shared memory array accessible to all threads within same thread block
+    int i: index to traverse the array A
+    int k: index to traverse elements in the shared memory array loc
+    loc[k] = A[i] //copying an element from A to shared memory array
+    __syncthreads();
+    int j;
+    
+    //general sorting alg within a block to perform pairwise comparisons of adjacent elements in loc to sort
+        //first phase: threads with even k values compare and potentially swap
+        //sec phase: threads with odd k values compare and potentially swap
+        //after each phase, __syncthreads()
+        //after each iteration of loop, sorted elements are written back to global mem A. Each thread updates value in A based on the sorted value in loc
 }
 
-// Now the recursive part
-int nright = rptr - data;
-int nleft = lptr - data;
-
-// Launch a new block to sort the left part.
-if (left < (rptr - data))
+// CUDA kernel for final merge and sorting
+__global__ void final_merge(int *A, int* S) //S is the info about the splitters
 {
-	cudaStream_t s;
-	cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
-	cdp_simple_quicksort << < 1, 1, 0, s >> >(data, left, nright, depth + 1);
-	cudaStreamDestroy(s);
+    //splitter range
+    int lower_limit
+    int upper_limit
+
+    //redistributes and sorts the locally stored data into final sorted order, using info from S to partition and sort the data. Data from each thread block is correctly ordered across entire dataset
+
 }
 
-// Launch a new block to sort the right part.
-if ((lptr - data) < right)
+// CPU based sorting, not GPU
+void merge(int *arr, int l, int m, int r)
 {
-	cudaStream_t s1;
-	cudaStreamCreateWithFlags(&s1, cudaStreamNonBlocking);
-	cdp_simple_quicksort << < 1, 1, 0, s1 >> >(data, nleft, right, depth + 1);
-	cudaStreamDestroy(s1);
+    //merge two sorted subarrays into single sorted array
+}
+
+// CPU based sorting, not GPU bc efficient for large datasets
+void mergeSort(int *arr, int left, int right)
+{
+    // recursive merge sort
+}
+
+int main()
+{
+    // Host (CPU) memory allocation and data generation
+    // ...
+
+    // Device (GPU) memory allocation
+    // ...
+
+    // Measure time for serial merge sort on m_A
+    // ...
+
+    // Set up CUDA grid and block dimensions
+    // ...
+
+    // Measure time for parallel sorting using sample_sort kernel on d_A
+    // ...
+
+    // Sort the splitter array h_S on the CPU
+    // ...
+
+    // Generate array h_F to store final splitters
+    // ...
+
+    // Launch final_merge kernel on d_A, sending splitters from d_S
+    // ...
+
+    // Copy sorted data from device to host
+    // ...
+
+    // Free device memory
+    // ...
+
+    // Print the time taken for serial and parallel sorting
+    // ...
+
+    return 0;
 }
 
 
-**Quicksort MPI Pseudo**
-https://www.codeproject.com/KB/threads/Parallel_Quicksort/Parallel_Quick_sort_without_merge.pdf 
 
-function sort_recursive(arr, size, pr_rank, max_rank, rank_index)
-    dtIn := MPI_Status
+**Sample Sort MPI Pseudo**
 
-    share_pr := pr_rank + 2^rank_index // Calculate the rank of the sharing process 
-    rank_index := rank_index + 1 // Increment the count index 
+int sampleSort(int argc, char *argv[]) {
+  int numValues, numProcs;
+  int taskid;
 
-    if share_pr > max_rank // If no process to share, sort recursively sequentially 
-        sort_rec_seq(arr, size)
-        return 0
-    end if
+	// get num of processors and values
+  if (argc == 2)
+  {
+      numValues = atoi(argv[1]);
+  }
+  else
+  {
+      printf("\n Please provide the size of the matrix");
+  }
+  
+  MPI_Init(&argc,&argv);
+  MPI_Comm_rank(MPI_COMM_WORLD,&taskid);
+  MPI_Comm_size(MPI_COMM_WORLD,&numProcs);
+  int numWorkers = numProcs - 1;
+  // initialize master process and generate array values
+  mainArr[numValues]
+  
+  // distribute numValues equally to each worker
+  if (MASTER) {
+    values = numValues/(numWorkers)
+    offset = 0;
+    MPI_Send {values} number of vals from mainArr to each worker
+    increment offset by vals
+    // receive values by workers
+    for (i=1; i<=numWorkers; i++)
+        {
+           MPI_Recv values
+    }
+  }
+  
+  if (worker) {
+    //create array of size numWorkers-1 to store chosen samples
+    sampleArr[numWorkers-1]
+    /*locally sort and pick samples from each worker
+      It chooses p-1 evenly spaced elements from the sorted block
+        So say for example there are 3 processes and 24 elements:
+          each process gets 8 elements and returns 2 (3-1) samples
+    */
+    choose samples and add to sampleArr
+    // All workers send their sample elements to master process
+    MPI_Send sampleArr to MASTER
+  }
+  
+  if (MASTER) {
+    // receive samples from workers
+    totalSamples[(numWorkers-1)(numWorkers)]
+    for (i=1; i<=numWorkers; i++)
+    {
+           MPI_Recv samples from WORKER
+           add received values to totalSamples
+    }
+    // Master process sequentially sorts the p(p-1) sample elements and selects p-1 splitters
+    splitters[numWorkers-1]
+    sort totalSamples
+    choose p-1 splitters and store in splitters array
+    // Master process broadcasts the splitters to all other processes
+    // splitters dictate what the start/end of each subarr should be
+    // make sure to maintain offset so process can write to main arr correctly
+    currSplitter = 0
+    for (i=1; i<=numWorkers; i++)
+    {
+           MPI_Send entire arr, and [start, splitters[currSplitter]) to each worker
+           MPI_Send offset to each worker
+           offset += values
+           start = splitters[currSplitter]
+           currSplitter++
+    }
+  }
+  
+  if (WORKER) {
+    // Receive arr, start, splitter, and offset from master
+    MPI_Recv arr from MASTER
+    MPI_Recv start from MASTER
+    MPI_Recv splitter from MASTER
+    MPI_Recv offset from MASTER
+    
+    localArr[values]
+    find values from arr that fall in between [start, splitter) and add to localArr
+    sort localArr
+    send localArr back to MASTER along with offset so it knows where to insert values
+    MPI_Send localArr to MASTER
+    MPI_Send offset to MASTER
+  }
+  
+  finalArr[numValues]
+  if (MASTER) {
+    for (i=1 ; i<=numWorkers; i++) {
+      MPI_Recv localArr
+      MPI_offset
+      insert localArr starting at finalArr[offset]
+    }
+  }
+    
+	return 0;
+}
 
-    pivot := arr[size / 2] // Select the pivot 
-    partition_pt := sequential_quicksort(arr, pivot, size, (size / 2) - 1) // Partition array 
-    offset := partition_pt + 1
-
-    if offset > size - offset
-        MPI_Send((arr + offset), size - offset, MPI_INT, share_pr, offset, MPI_COMM_WORLD)
-        sort_recursive(arr, offset, pr_rank, max_rank, rank_index)
-        MPI_Recv((arr + offset), size - offset, MPI_INT, share_pr, MPI_ANY_TAG, MPI_COMM_WORLD, dtIn)
-    else
-        MPI_Send(arr, offset, MPI_INT, share_pr, tag, MPI_COMM_WORLD)
-        sort_recursive((arr + offset), size - offset, pr_rank, max_rank, rank_index)
-        MPI_Recv(arr, offset, MPI_INT, share_pr, MPI_ANY_TAG, MPI_COMM_WORLD, dtIn)
-    end if
-end function
 
 
 **Bitonic Sort CUDA Pseudo**
