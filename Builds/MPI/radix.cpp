@@ -30,8 +30,8 @@ const char* main_region = "main";
 const char* data_init = "data_init";
 const char* comp = "comp";
 const char* comm = "comm";
-const char* comp_small = "comp_small";
-const char* comm_small = "comm_small";
+//const char* comp_small = "comp_small";
+//const char* comm_small = "comm_small";
 const char* comp_large = "comp_large";
 const char* comm_large = "comm_large";
 const char* correctness_check = "correctness_check";
@@ -162,7 +162,7 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
 
 		// CALCULATE BUCKET_ACCUMS
    CALI_MARK_BEGIN(comp);
-   CALI_MARK_BEGIN(comp_small);
+   CALI_MARK_BEGIN(comp_large);
    comp_small_start = MPI_Wtime();
 
 		// count total size of bucket for this process, and alloc it. also compute bucket_accum
@@ -179,7 +179,7 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
 			bucket_sizes[i] = single_bucket_size;
 		}
    comp_small_end = MPI_Wtime();
-   CALI_MARK_END(comp_small);
+   CALI_MARK_END(comp_large);
   
     CALI_MARK_END(comp);
     
@@ -187,7 +187,7 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
 
 		// send keys across each process
    CALI_MARK_BEGIN(comm);
-   CALI_MARK_BEGIN(comm_small);
+   CALI_MARK_BEGIN(comm_large);
    comm_small_start = MPI_Wtime();
 		for(unsigned int i = 0; i < b; ++i) {
 			unsigned int dest = BUCKET_TO_CPU(i);
@@ -220,7 +220,7 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
 			}
 		}
    comm_small_end = MPI_Wtime();
-   CALI_MARK_END(comm_small);
+   CALI_MARK_END(comm_large);
    CALI_MARK_END(comm);
 
 		delete arr;
