@@ -28,7 +28,7 @@ const char* comp_large = "comp_large";
 const char* comm_large = "comm_large";
 const char* correctness_check = "correctness_check";
 
-int correctness_check(int arr[], int size) {
+int correctnessCheck(int arr[], int size) {
   CALI_MARK_BEGIN(correctness_check);
   for (int i=0; i<size-1; i++) {
     if (arr[i+1] < arr[i])
@@ -41,7 +41,6 @@ int correctness_check(int arr[], int size) {
 
 int main(int argc, char *argv[]) {
   CALI_CXX_MARK_FUNCTION;
-  
   CALI_MARK_BEGIN(main_region);
   int numValues;
   if (argc == 2)
@@ -215,7 +214,7 @@ int main(int argc, char *argv[]) {
     printf("\n");
     
     CALI_MARK_BEGIN(correctness_check);
-    if (correctness_check(finalArr, numValues)) {
+    if (correctnessCheck(finalArr, numValues)) {
       printf("CORRECT");
     } else {
       printf("INCORRECT");
@@ -323,6 +322,35 @@ int main(int argc, char *argv[]) {
     MPI_Send(&buckets, numWorkers*(avgVals+1), MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
     CALI_MARK_END(comm_large);
   }
+
+  const char* algorithm = "Sample Sort";
+  const char* programmingModel = "MPI";
+  const char* datatype = "int";
+
+  adiak::init(NULL);
+  adiak::launchdate();
+  adiak::libraries();
+  adiak::cmdline();   
+  adiak::clustername();  
+  adiak::value("Algorithm", algorithm);
+  adiak::value("ProgrammingModel", programmingModel); // e.g., "MPI", "CUDA", "MPIwithCUDA"
+  adiak::value("Datatype", datatype); // The datatype of input elements (e.g., double, int, float)
+  adiak::value("SizeOfDatatype", 4); // sizeof(datatype) of input elements in bytes (e.g., 1, 2, 4)
+  adiak::value("InputSize", numValues); // The number of elements in input dataset (1000)
+  adiak::value("InputType", "ReverseSorted"); // For sorting, this would be "Sorted", "ReverseSorted", "Random", "1%perturbed"
+  adiak::value("num_procs", numProcs); // The number of processors (MPI ranks)
+  adiak::value("group_num", 10); // The number of your group (integer, e.g., 1, 10)
+  adiak::value("implementation_source", "Handwritten") // Where you got the source code of your algorithm; choices: ("Online", "AI", "Handwritten").
+
+  adiak::value("main", main_region);
+  adiak::value("data_init", data_init);
+  adiak::value("comm", comm);
+  adiak::value("comp", comp);
+  adiak::value("comm_large", comm_large);
+  adiak::value("comm_small", comm_small);
+  adiak::value("comp_large", comp_large);
+  adiak::value("comp_small", comp_small);
+  adiak::value("correctness_check", correctness_check);
 
   mgr.stop();
   mgr.flush();
