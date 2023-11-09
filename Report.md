@@ -1,6 +1,6 @@
 # CSCE 435 Group project
 
-## 0. Group number: 
+## 0. Group number: 10
 
 ## 1. Group members:
 1. Reagan Reitmeyer
@@ -17,8 +17,8 @@ Parallel sorting algorithms
 - Radix sort (MPI)
 - Merge sort (CUDA)
 - Merge sort (MPI)
-- Quick sort (CUDA)
-- Quick sort (MPI)
+- Sample sort (CUDA)
+- Sample sort (MPI)
 - Bitonic sort (CUDA)
 - Bitonic sort (MPI)
 
