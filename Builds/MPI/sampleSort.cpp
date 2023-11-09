@@ -350,6 +350,8 @@ int main(int argc, char *argv[]) {
     CALI_MARK_END(comm);
   }
 
+  CALI_MARK_END(main_region);
+  
   const char* algorithm = "Sample Sort";
   const char* programmingModel = "MPI";
   const char* datatype = "int";
@@ -383,5 +385,4 @@ int main(int argc, char *argv[]) {
   mgr.flush();
   
   MPI_Finalize();
-  CALI_MARK_END(main_region);
 }
