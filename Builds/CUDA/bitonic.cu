@@ -31,11 +31,9 @@ cudaEvent_t device_to_host_start, device_to_host_end;
 const char* main_region = "main";
 const char* data_init_region = "data_init";
 const char* comm_region = "comm";
-const char* comm_small_region = "comm_small";
 const char* comm_large_region = "comm_large";
 const char* comp_region = "comp";
 const char* comp_small_region = "comp_small";
-const char* comp_large_region = "comp_large";
 const char* correctness_check_region = "correctness_check";
 
 
@@ -253,8 +251,18 @@ int main(int argc, char *argv[])
   adiak::value("bitonic_sort_step_time", bitonic_sort_step_time);
   adiak::value("cudaMemcpy_host_to_device_time", cudaMemcpy_host_to_device_time);
   adiak::value("cudaMemcpy_device_to_host_time", cudaMemcpy_device_to_host_time);
+  adiak::value("main", main_region);
+  adiak::value("cudaMemcpy_device_to_host_time", cudaMemcpy_device_to_host_time);
+
+
+  const char* main_region = "main";
+const char* data_init_region = "data_init";
+const char* comm_region = "comm";
+const char* comm_large_region = "comm_large";
+const char* comp_region = "comp";
+const char* comp_small_region = "comp_small";
+const char* correctness_check_region = "correctness_check";
 
   // Flush Caliper output before finalizing MPI
   mgr.stop();
   mgr.flush();
-}
