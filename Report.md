@@ -853,10 +853,12 @@ END FUNCTION
 ```
 
 ### 2c. Evaluation plan - what and how will you measure and compare
-- Input sizes, Input types
-- Strong scaling (same problem size, increase number of processors/nodes)
-- Weak scaling (increase problem size, increase number of processors)
-- Number of threads in a block on the GPU 
+- see how runtime changes in response to varying number of threads in a block on the GPU 
+- see how runtime changes in response to increasing input size.
+- see how runtime changes in response to increasing data types (besides radix).
+- see how runtime changes in response to various input types (sorted, reverse, ...)
+- see how runtime changes in response to increasing processors or threads(strong scaling)
+- see how runtime changes in response to increasing processors or threads along with increasing problem size(weak scaling)
 
 
 ## 3. Project implementation
@@ -864,6 +866,21 @@ Implement your proposed algorithms, and test them starting on a small scale.
 Instrument your code, and turn in at least one Caliper file per algorithm;
 if you have implemented an MPI and a CUDA version of your algorithm,
 turn in a Caliper file for each.
+
+We planned to turn in a cali file for each implementation, but the cali files we produced are in our scratch directories and we cannot access them due to the maintenance.
+
+We made slight modifications that we could not test due to Grace being down so there may be some compilation errors when running these algorithms:
+- MPI Sample Sort
+- MPI Radix Sort
+- MPI Merge Sort
+- CUDA Bitonic
+- CUDA Merge Sort
+NOTE: The algorithms listed above are fully implemented and should be working given that the previously mentioned modifications did not introduce errors that we could not test for.
+
+Regarding the remaining three algorithms:
+- CUDA Radix Sort: This algorithm was working on our scratch directory, but we had to recreate the algorithm from memory because Grace is down. The currently uploaded CUDA Radix file is what we were able to procure from memory.
+- CUDA Sample Sort: There isn't much information available about this algorithm online, so we had trouble finding a good/reliable source code to go based off of. We did find a source code online at https://github.com/SwayambhuNathRay/Sample-Sort-CUDA/blob/master/sample_sort.cu, but we are having difficulty understanding it. Because of this, we are debating writing the algorithm ourselves like we did with MPI or finding a different source code.
+- MPI Bitonic: Bitonic sort is not a simple algorithm to parallelize, it requires careful synchronization and communication between processes to ensure the correct sorting order. The algoritm involves multiple stages of sorting, and managing these stages in parallel introduces complexity. Additionally, MPI based bitonic sort implementation becomes increasingly difficult when more processes are added, you need to manage communication effectively to avoid bottlenecks. 
 
 ### 3a. Caliper instrumentation
 Please use the caliper build `/scratch/group/csce435-f23/Caliper/caliper/share/cmake/caliper` 

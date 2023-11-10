@@ -28,7 +28,7 @@ const char* comp_large = "comp_large";
 const char* comm_large = "comm_large";
 const char* correctness_check = "correctness_check";
 
-int correctness_check(int arr[], int size) {
+int correctnessCheck(int arr[], int size) {
   CALI_MARK_BEGIN(correctness_check);
   for (int i=0; i<size-1; i++) {
     if (arr[i+1] < arr[i])
@@ -41,7 +41,6 @@ int correctness_check(int arr[], int size) {
 
 int main(int argc, char *argv[]) {
   CALI_CXX_MARK_FUNCTION;
-  
   CALI_MARK_BEGIN(main_region);
   int numValues;
   if (argc == 2)
@@ -122,9 +121,11 @@ int main(int argc, char *argv[]) {
     CALI_MARK_END(comm);
     
     // sequentially sort samples
+    CALI_MARK_BEGIN(comp);
     CALI_MARK_BEGIN(comp_small);
     std::sort(totalSamples.begin(), totalSamples.end());
     CALI_MARK_END(comp_small);
+    CALI_MARK_END(comp);
     
     printf("total sample: ");
     for (int sample: totalSamples) {
@@ -137,6 +138,7 @@ int main(int argc, char *argv[]) {
     int spacing = std::ceil((float)totalSamples.size()/(float)numWorkers);
     //printf("spacing: %d\n", spacing);
     int index = spacing-1;
+    CALI_MARK_BEGIN(comp);
     CALI_MARK_BEGIN(comp_small);
     for (int i=0; i<numWorkers-1; i++) {
       globalSplitters[i] = totalSamples[index];
@@ -144,6 +146,7 @@ int main(int argc, char *argv[]) {
       index += spacing;
     }
     CALI_MARK_END(comp_small);
+    CALI_MARK_END(comp);
     
     // TODO: make selection more evenly spaced?
     printf("Global splitters: ");
@@ -161,17 +164,21 @@ int main(int argc, char *argv[]) {
          if (dest==numWorkers)
            lessThan = INT_MAX;
          //printf("Sending %d to %d task %d offset=%d\n", greaterThan, lessThan, dest, offset);
+         CALI_MARK_BEGIN(comm);
          CALI_MARK_BEGIN(comm_small);
          MPI_Send(&globalSplitters, numWorkers-1, MPI_INT, dest, mtype, MPI_COMM_WORLD);
          CALI_MARK_END(comm_small);
+
          CALI_MARK_BEGIN(comm_large);
          MPI_Send(&mainArr, numValues, MPI_INT, dest, mtype, MPI_COMM_WORLD);
          CALI_MARK_END(comm_large);
+         CALI_MARK_END(comm);
     }
     
     // receive results from workers
     std::vector<std::vector<int>> accumBuckets(numWorkers); 
     mtype = FROM_WORKER;
+    CALI_MARK_BEGIN(comm);
     CALI_MARK_BEGIN(comm_large);
     for (source=1; source<=numWorkers; source++)
     {
@@ -187,15 +194,19 @@ int main(int argc, char *argv[]) {
          }
     }
     CALI_MARK_END(comm_large);
+    CALI_MARK_END(comm);
     
     // sort each row/bucket
+    CALI_MARK_BEGIN(comp);
     CALI_MARK_BEGIN(comp_large);
     for (int i=0; i<numWorkers; i++) {
        std::sort(accumBuckets[i].begin(), accumBuckets[i].end());
     }
     CALI_MARK_END(comp_large);
+    CALI_MARK_END(comp);
     
     // concatenate results into final array
+    CALI_MARK_BEGIN(comp);
     CALI_MARK_BEGIN(comp_large);
     int finalIndex = 0;
     for (int i=0; i<numWorkers; i++) {
@@ -205,6 +216,7 @@ int main(int argc, char *argv[]) {
        }
     }
     CALI_MARK_END(comp_large);
+    CALI_MARK_END(comp);
     
     printf("final index: %d\n", finalIndex);
     // check final array
@@ -215,7 +227,7 @@ int main(int argc, char *argv[]) {
     printf("\n");
     
     CALI_MARK_BEGIN(correctness_check);
-    if (correctness_check(finalArr, numValues)) {
+    if (correctnessCheck(finalArr, numValues)) {
       printf("CORRECT");
     } else {
       printf("INCORRECT");
@@ -232,21 +244,26 @@ int main(int argc, char *argv[]) {
     
     // receive values from master
     mtype = FROM_MASTER;
+    CALI_MARK_BEGIN(comm);
     CALI_MARK_BEGIN(comm_large);
     MPI_Recv(&workerValues, 1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
     std::vector<int> arr(workerValues);
     MPI_Recv(&arr[0], workerValues, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
     CALI_MARK_END(comm_large);
+    CALI_MARK_END(comm);
     
     // locally sort arr with sequential sorting
+    CALI_MARK_BEGIN(comp);
     CALI_MARK_BEGIN(comp_large);
     std::sort(arr.begin(), arr.end());
     CALI_MARK_END(comp_large);
+    CALI_MARK_END(comp);
     
     // choose samples and add to sampleArr
     int spacing = std::ceil((float)workerValues/(float)numWorkers);
     //printf("spacing: %d\n", spacing);
     int index = spacing-1;
+    CALI_MARK_BEGIN(comp);
     CALI_MARK_BEGIN(comp_small);
     for (int i=0; i<numWorkers-1; i++) {
       chosenSamples[i] = arr[index];
@@ -254,6 +271,7 @@ int main(int argc, char *argv[]) {
       index += spacing;
     }
     CALI_MARK_END(comp_small);
+    CALI_MARK_END(comp);
     
     //printf("vector size: %d\n", chosenSamples.size());
     //printf("num workers: %d\n", numWorkers);
@@ -265,16 +283,20 @@ int main(int argc, char *argv[]) {
     // All workers send their sample elements to master process
     // MPI_Send chosenSamples to MASTER
     mtype = FROM_WORKER;
+    CALI_MARK_BEGIN(comm);
     CALI_MARK_BEGIN(comm_small);
     MPI_Send(&chosenSamples, numWorkers-1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
     CALI_MARK_END(comm_small);
+    CALI_MARK_END(comm);
     
     // receive splitters from master
     mtype = FROM_MASTER;
     int splitters[numWorkers-1];
+    CALI_MARK_BEGIN(comm);
     CALI_MARK_BEGIN(comm_small);
     MPI_Recv(&splitters, numWorkers-1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
     CALI_MARK_END(comm_small);
+    CALI_MARK_END(comm);
     printf("task %d received splitters\n", taskid);
     
     printf("splitters\n");
@@ -286,6 +308,7 @@ int main(int argc, char *argv[]) {
     int buckets[numWorkers][avgVals+1];
     int arrIndex[numWorkers];
     // initialize the entire array with -1 so we know which values aren't used
+    CALI_MARK_BEGIN(comp);
     CALI_MARK_BEGIN(comp_large);
     for (int i=0; i<numWorkers; i++) {
       arrIndex[i]=0;
@@ -316,17 +339,50 @@ int main(int argc, char *argv[]) {
   		}
   	}
     CALI_MARK_END(comp_large);
+    CALI_MARK_END(comp);
    
     // send buckets back to MASTER
     mtype = FROM_WORKER;
+    CALI_MARK_BEGIN(comm);
     CALI_MARK_BEGIN(comm_large);
     MPI_Send(&buckets, numWorkers*(avgVals+1), MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
     CALI_MARK_END(comm_large);
+    CALI_MARK_END(comm);
   }
+
+  CALI_MARK_END(main_region);
+  
+  const char* algorithm = "Sample Sort";
+  const char* programmingModel = "MPI";
+  const char* datatype = "int";
+
+  adiak::init(NULL);
+  adiak::launchdate();
+  adiak::libraries();
+  adiak::cmdline();   
+  adiak::clustername();  
+  adiak::value("Algorithm", algorithm);
+  adiak::value("ProgrammingModel", programmingModel); // e.g., "MPI", "CUDA", "MPIwithCUDA"
+  adiak::value("Datatype", datatype); // The datatype of input elements (e.g., double, int, float)
+  adiak::value("SizeOfDatatype", 4); // sizeof(datatype) of input elements in bytes (e.g., 1, 2, 4)
+  adiak::value("InputSize", numValues); // The number of elements in input dataset (1000)
+  adiak::value("InputType", "ReverseSorted"); // For sorting, this would be "Sorted", "ReverseSorted", "Random", "1%perturbed"
+  adiak::value("num_procs", numProcs); // The number of processors (MPI ranks)
+  adiak::value("group_num", 10); // The number of your group (integer, e.g., 1, 10)
+  adiak::value("implementation_source", "Handwritten") // Where you got the source code of your algorithm; choices: ("Online", "AI", "Handwritten").
+
+  adiak::value("main", main_region);
+  adiak::value("data_init", data_init);
+  adiak::value("comm", comm);
+  adiak::value("comp", comp);
+  adiak::value("comm_large", comm_large);
+  adiak::value("comm_small", comm_small);
+  adiak::value("comp_large", comp_large);
+  adiak::value("comp_small", comp_small);
+  adiak::value("correctness_check", correctness_check);
 
   mgr.stop();
   mgr.flush();
   
   MPI_Finalize();
-  CALI_MARK_END(main_region);
 }

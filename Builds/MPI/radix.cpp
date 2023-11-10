@@ -105,18 +105,17 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
 	vector<unsigned int> bucket_sizes(bpp);
 	vector<unsigned int> *this_bucket;			
 
-
 	// dummy, MPI asks for them
 	MPI_Request request;  // request handles for key communication
 	MPI_Status  status;	  // status of key communication recvs
 
 	for(unsigned int round = 0; mask != 0; mask <<= g, ++round) {
 		// CALCULATE BUCKET COUNTS
+   comp_large_start = MPI_Wtime();
    CALI_MARK_BEGIN(comp);
 
 		// clear buckets
    CALI_MARK_BEGIN(comp_large);
-   comp_large_start = MPI_Wtime();
 		for(unsigned int i = 0; i < b; ++i) {
 			bucket_counts_aux[i] = 0;
 			bucket_counts[i][id] = 0;
@@ -131,15 +130,15 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
 			bucket_counts[bucket][id]++;
 			buckets[bucket].push_back(elem);
 		}
-   comp_large_end = MPI_Wtime();
    CALI_MARK_END(comp_large);
    CALI_MARK_END(comp);
+   comp_large_end = MPI_Wtime();
 
 		// SEND/RECV BUCKET COUNTS
+	comm_large_start = MPI_Wtime();
    CALI_MARK_BEGIN(comm);
     
     CALI_MARK_BEGIN(comm_large);
-    comm_large_start = MPI_Wtime();
 		// sends my bucket counts to all other processes
 		for(unsigned int i = 0; i < p; ++i) {
 			if (i != id)
@@ -154,16 +153,16 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
 					bucket_counts[k][i] = bucket_counts_aux[k];
 			}
 		}
-   comm_large_end = MPI_Wtime();
    CALI_MARK_END(comm_large);
   
    CALI_MARK_END(comm);
+   comm_large_end = MPI_Wtime();
    
 
 		// CALCULATE BUCKET_ACCUMS
+   comp_small_start = MPI_Wtime();
    CALI_MARK_BEGIN(comp);
    CALI_MARK_BEGIN(comp_large);
-   comp_small_start = MPI_Wtime();
 
 		// count total size of bucket for this process, and alloc it. also compute bucket_accum
 		int total_bucket_size = 0;
@@ -178,17 +177,17 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
 			}
 			bucket_sizes[i] = single_bucket_size;
 		}
-   comp_small_end = MPI_Wtime();
    CALI_MARK_END(comp_large);
   
     CALI_MARK_END(comp);
+	comp_small_end = MPI_Wtime();
     
 		this_bucket = new vector<unsigned int>(total_bucket_size);
 
 		// send keys across each process
+   comm_small_start = MPI_Wtime();
    CALI_MARK_BEGIN(comm);
    CALI_MARK_BEGIN(comm_large);
-   comm_small_start = MPI_Wtime();
 		for(unsigned int i = 0; i < b; ++i) {
 			unsigned int dest = BUCKET_TO_CPU(i);
 			unsigned int local_bucket = BUCKET_IN_CPU(i);
@@ -219,9 +218,9 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
 				}
 			}
 		}
-   comm_small_end = MPI_Wtime();
    CALI_MARK_END(comm_large);
    CALI_MARK_END(comm);
+   comm_small_end = MPI_Wtime();
 
 		delete arr;
 		arr = this_bucket;
@@ -315,13 +314,13 @@ int main(int argc, char **argv) {
 
 	if (id == 0) cerr << "mask size = " << g << endl << endl;
  
-  CALI_MARK_BEGIN(data_init);
   data_init_start = MPI_Wtime();
+  CALI_MARK_BEGIN(data_init);
 	vector<unsigned int> *arr = new vector<unsigned int>(len / size);
 	// generate test data
    test_data(arr, id, (len/size)); 
-   data_init_end = MPI_Wtime();
    CALI_MARK_END(data_init);
+   data_init_end = MPI_Wtime();
 
 	// the real stuff
 	if (id == 0) cerr << "starting radix sort...";
@@ -335,11 +334,11 @@ int main(int argc, char **argv) {
 
 	MPI_Barrier(MPI_COMM_WORLD);
 	// check array order
-  CALI_MARK_BEGIN(correctness_check);
   correctness_check_start = MPI_Wtime();
+  CALI_MARK_BEGIN(correctness_check);
 	int order = check_array_order(arr, id, size);
-  correctness_check_end = MPI_Wtime();
   CALI_MARK_END(correctness_check);
+  correctness_check_end = MPI_Wtime();
   
 	switch (order) {
 		case ORDER_CORRECT: 	cerr << "CORRECT! Result is ordered" << endl; break;
@@ -351,6 +350,7 @@ int main(int argc, char **argv) {
 	//sprintf(msg, "%lf, ", 0); // timer.get() * 1.0e-3);
 	//ordered_print(msg, id, size);
  
+ CALI_MARK_END(main_region);
  if (id == 0) {
    cout << "\n";
     cout << "Sorted Array: ";
@@ -396,14 +396,14 @@ int main(int argc, char **argv) {
   adiak::value("group_num", group_number); // The number of your group (integer, e.g., 1, 10)
   adiak::value("implementation_source", implementation_source); // Where you got the source code of your algorithm; choices: ("Online", "AI", "Handwritten").
   
-  adiak::value("data_init_time", data_init_time);
-  adiak::value("comm_time", comm_time);
-  adiak::value("comp_time", comp_time);
-  adiak::value("comm_small_time", comm_small_time);
-  adiak::value("comm_large_time", comm_large_time);
-  adiak::value("comp_small_time", comp_small_time);
-  adiak::value("comp_large_time", comp_large_time);
-  adiak::value("correctness_check_time", correctness_check_time);
+  adiak::value("data_init", data_init);
+  adiak::value("comm", comm);
+  adiak::value("comp", comp);
+  //adiak::value("comm_small", comm_small);
+  adiak::value("comm_large", comm_large);
+  //adiak::value("comp_small", comp_small);
+  adiak::value("comp_large", comp_large);
+  adiak::value("correctness_check", correctness_check);
   
   if (id == 0) {
     printf("\n");
@@ -416,5 +416,4 @@ int main(int argc, char **argv) {
 	mgr.stop();
     mgr.flush();
 	MPI_Finalize();
- CALI_MARK_END(main_region);
 }
