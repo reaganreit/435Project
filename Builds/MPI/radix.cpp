@@ -35,6 +35,8 @@ const char* comm = "comm";
 const char* comp_large = "comp_large";
 const char* comm_large = "comm_large";
 const char* correctness_check = "correctness_check";
+const char* Send = "MPI_Isend";
+const char* Barrier = "MPI_Barrier";
 
 //timers
 double data_init_start, data_init_end, comp_small_start, comp_small_end, comm_small_start, comm_small_end, comm_large_start, comm_large_end, comp_large_start, comp_large_end, correctness_check_start, correctness_check_end; 
@@ -140,10 +142,12 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
     
     CALI_MARK_BEGIN(comm_large);
 		// sends my bucket counts to all other processes
+   CALI_MARK_BEGIN(Send);
 		for(unsigned int i = 0; i < p; ++i) {
 			if (i != id)
 				MPI_Isend(&bucket_counts_aux[0], b, MPI_INT, i, TAG_BUCKET_COUNT, MPI_COMM_WORLD, &request);
 		}
+   CALI_MARK_END(Send);
 		// recv bucket counts from other processes
 		for(unsigned int i = 0; i < p; ++i) {
 			if (i != id) {
@@ -188,6 +192,7 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
    comm_small_start = MPI_Wtime();
    CALI_MARK_BEGIN(comm);
    CALI_MARK_BEGIN(comm_large);
+   CALI_MARK_BEGIN(Send);
 		for(unsigned int i = 0; i < b; ++i) {
 			unsigned int dest = BUCKET_TO_CPU(i);
 			unsigned int local_bucket = BUCKET_IN_CPU(i);
@@ -196,6 +201,7 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
 				MPI_Isend(&(buckets[i][0]), buckets[i].size(), MPI_INT, dest, local_bucket, MPI_COMM_WORLD, &request);
 			}
 		}
+   CALI_MARK_END(Send);
 
 		// recv keys
 		for(unsigned int b = 0; b < bpp; ++b) {
@@ -270,24 +276,6 @@ int check_array_order(vector<unsigned int> *&arr, unsigned int id, unsigned int 
 
 #define MSG_SIZE 100
 
-void ordered_print(char *str, unsigned int id, unsigned int size) {
-	// if master, receive data and print it
-	if (id == 0) {
-		cout << str;
-		MPI_Status status;
-		for(unsigned int i = 1; i < size; ++i) {
-			char buff[MSG_SIZE];
-			MPI_Recv(buff, MSG_SIZE, MPI_BYTE, i, TAG_COUT_DATA, MPI_COMM_WORLD, &status);
-			cout << buff;
-		}
-	}
-
-	// else send it to master
-	else {
-		MPI_Send(str, MSG_SIZE, MPI_BYTE, 0, TAG_COUT_DATA, MPI_COMM_WORLD);
-	}
-}
-
 int main(int argc, char **argv) {
 	CALI_MARK_BEGIN(main_region);
 	int g = 4;
@@ -324,15 +312,27 @@ int main(int argc, char **argv) {
 
 	// the real stuff
 	if (id == 0) cerr << "starting radix sort...";
+  CALI_MARK_BEGIN(comm);
+  CALI_MARK_BEGIN(Barrier);
 	MPI_Barrier(MPI_COMM_WORLD);
+ CALI_MARK_END(Barrier);
+   CALI_MARK_END(comm);
 //	timer.start();
 	radix_mpi(arr, id, size, g);
 //	timer.stop();
+  CALI_MARK_BEGIN(comm);
+  CALI_MARK_BEGIN(Barrier);
 	MPI_Barrier(MPI_COMM_WORLD);
+  CALI_MARK_END(Barrier);
+   CALI_MARK_END(comm);
+ 
 	if (id == 0) cerr << "finished" << endl << endl;
  
-
+  CALI_MARK_BEGIN(comm);
+  CALI_MARK_BEGIN(Barrier);
 	MPI_Barrier(MPI_COMM_WORLD);
+ CALI_MARK_END(Barrier);
+ CALI_MARK_END(comm);
 	// check array order
   correctness_check_start = MPI_Wtime();
   CALI_MARK_BEGIN(correctness_check);
@@ -340,15 +340,13 @@ int main(int argc, char **argv) {
   CALI_MARK_END(correctness_check);
   correctness_check_end = MPI_Wtime();
   
+  
 	switch (order) {
 		case ORDER_CORRECT: 	cerr << "CORRECT! Result is ordered" << endl; break;
 		case ORDER_ONLY_MASTER: break;
 		default: 				cerr << "WRONG! Order fails at index " << order << endl; break;
 	}
 
-	// print time for each process
-	//sprintf(msg, "%lf, ", 0); // timer.get() * 1.0e-3);
-	//ordered_print(msg, id, size);
  
  CALI_MARK_END(main_region);
  if (id == 0) {
@@ -404,6 +402,8 @@ int main(int argc, char **argv) {
   //adiak::value("comp_small", comp_small);
   adiak::value("comp_large", comp_large);
   adiak::value("correctness_check", correctness_check);
+  adiak::value("MPI_Barrier", Barrier);
+  adiak::value("MPI_Isend", Send);
   
   if (id == 0) {
     printf("\n");
