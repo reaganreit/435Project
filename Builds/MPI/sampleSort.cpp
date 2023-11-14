@@ -40,8 +40,6 @@ int correctnessCheck(int arr[], int size) {
 }
 
 int main(int argc, char *argv[]) {
-  CALI_CXX_MARK_FUNCTION;
-  CALI_MARK_BEGIN(main_region);
   int numValues;
   if (argc == 2)
   {
@@ -77,6 +75,8 @@ int main(int argc, char *argv[]) {
   int workerValues;
   int mainArr[numValues];   // array workers will read
   int finalArr[numValues];  // array workers will write to
+  
+  CALI_MARK_BEGIN(main_region);
   
   if (taskid == MASTER) {
     printf("Sample sort has started with %d tasks.\n", numWorkers);
@@ -226,13 +226,11 @@ int main(int argc, char *argv[]) {
     }
     printf("\n");
     
-    CALI_MARK_BEGIN(correctness_check);
     if (correctnessCheck(finalArr, numValues)) {
       printf("CORRECT");
     } else {
       printf("INCORRECT");
     }
-    CALI_MARK_END(correctness_check);
     
   }
   
@@ -369,7 +367,7 @@ int main(int argc, char *argv[]) {
   adiak::value("InputType", "ReverseSorted"); // For sorting, this would be "Sorted", "ReverseSorted", "Random", "1%perturbed"
   adiak::value("num_procs", numProcs); // The number of processors (MPI ranks)
   adiak::value("group_num", 10); // The number of your group (integer, e.g., 1, 10)
-  adiak::value("implementation_source", "Handwritten") // Where you got the source code of your algorithm; choices: ("Online", "AI", "Handwritten").
+  adiak::value("implementation_source", "Handwritten"); // Where you got the source code of your algorithm; choices: ("Online", "AI", "Handwritten").
 
   adiak::value("main", main_region);
   adiak::value("data_init", data_init);
