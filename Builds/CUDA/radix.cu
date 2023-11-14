@@ -10,6 +10,9 @@
 #include <thrust/device_free.h>
 #include <time.h>
 #include <stdlib.h>
+#include <caliper/cali.h>
+#include <caliper/cali-manager.h>
+#include <adiak.hpp>
 
 int SIZE;
 int THREADSIZE;
@@ -24,8 +27,9 @@ const char* comm = "comm";
 const char* comp_large = "comp_large";
 const char* comm_large = "comm_large";
 const char* correctness_check = "correctness_check";
+const char* cuda_memcpy = "cudaMemcpy";
 
-int correctness_check(int arr[], int size) {
+int correctnessCheck(int arr[], int size) {
   CALI_MARK_BEGIN(correctness_check);
   for (int i=0; i<size-1; i++) {
     if (arr[i+1] < arr[i])
@@ -86,7 +90,9 @@ __global__ void histogramKernel(int * inArray, int * outArray, int * radixArray,
     if(index < arrayLength){
         radixArray[index]       = radixArrayShared[thread];
     }
-
+    
+    __syncthreads(); 
+    
     if(thread == 0){
         for(i =0; i < RADIX; i ++){
             outArray[blockIndex + i]        = outArrayShared[i];
@@ -175,24 +181,33 @@ void cudaScanThrust(int* inarray, int arr_length, int* resultarray) {
 
     thrust::device_ptr<int> d_input = thrust::device_malloc<int>(length);
         thrust::device_ptr<int> d_output = thrust::device_malloc<int>(length);
-
+        
+        CALI_MARK_BEGIN(comm);
+        CALI_MARK_BEGIN(comm_large);
+        CALI_MARK_BEGIN(cuda_memcpy);
         cudaMemcpy(d_input.get(), inarray, length * sizeof(int), cudaMemcpyHostToDevice);
+        CALI_MARK_END(cuda_memcpy);
+        CALI_MARK_END(comm_large);
+        CALI_MARK_END(comm);
 
         thrust::inclusive_scan(d_input, d_input + length, d_output);
 
         cudaThreadSynchronize();
 
+        CALI_MARK_BEGIN(comm);
+        CALI_MARK_BEGIN(comm_large);
+        CALI_MARK_BEGIN(cuda_memcpy);
         cudaMemcpy(resultarray, d_output.get(), length * sizeof(int), cudaMemcpyDeviceToHost);
+        CALI_MARK_END(cuda_memcpy);
+        CALI_MARK_END(comm_large);
+        CALI_MARK_END(comm);
+
 
         thrust::device_free(d_input);
         thrust::device_free(d_output);
 }
 
 void radixSort(int * array, int size, int BLOCKSIZE){
-
-    double startTime;
-    double endTime;
-    double duration;
 
     int significantDigit    = 1;
 
@@ -226,7 +241,9 @@ void radixSort(int * array, int size, int BLOCKSIZE){
 
     CALI_MARK_BEGIN(comm);
     CALI_MARK_BEGIN(comm_large);
+    CALI_MARK_BEGIN(cuda_memcpy);
     cudaMemcpy(inputArray, array, sizeof(int)*size, cudaMemcpyHostToDevice);
+    CALI_MARK_END(cuda_memcpy);
     CALI_MARK_END(comm_large);
     CALI_MARK_END(comm);
 
@@ -244,9 +261,11 @@ void radixSort(int * array, int size, int BLOCKSIZE){
         int bucket[RADIX] = { 0 };
         CALI_MARK_BEGIN(comm);
         CALI_MARK_BEGIN(comm_large);
+        CALI_MARK_BEGIN(cuda_memcpy);
 
         cudaMemcpy(bucketArray, bucket, sizeof(int)*RADIX, cudaMemcpyHostToDevice);
 
+        CALI_MARK_END(cuda_memcpy);
         CALI_MARK_END(comm_large);
         CALI_MARK_END(comm);
 
@@ -264,11 +283,7 @@ void radixSort(int * array, int size, int BLOCKSIZE){
         CALI_MARK_END(comp); 
         cudaThreadSynchronize();            
 
-        CALI_MARK_BEGIN(comp);
-        CALI_MARK_BEGIN(comp_large);
-        cudaScanThrust(bucketArray, RADIX, bucketArray); 
-        CALI_MARK_END(comp_large);
-        CALI_MARK_END(comp);   
+        cudaScanThrust(bucketArray, RADIX, bucketArray);   
         cudaThreadSynchronize();
 
         CALI_MARK_BEGIN(comp);
@@ -301,11 +316,13 @@ void radixSort(int * array, int size, int BLOCKSIZE){
     //duration    = endTime - startTime;
     CALI_MARK_BEGIN(comm);
     CALI_MARK_BEGIN(comm_large);
+    CALI_MARK_BEGIN(cuda_memcpy);
     cudaMemcpy(array, semiSortArray, sizeof(int)*size, cudaMemcpyDeviceToHost);
+    CALI_MARK_END(cuda_memcpy);
     CALI_MARK_END(comm_large);
     CALI_MARK_END(comm);
 
-    printf("Duration : %.3f ms\n", 1000.f * duration);
+   // printf("Duration : %.3f ms\n", 1000.f * duration);
 
     cudaFree(inputArray);
     cudaFree(indexArray);
@@ -355,7 +372,12 @@ int main(int argc, char **argv){
     printf("\nSorted List:");
     printArray(array, size);
 
-    correctness_check(array, size)
+    if (correctnessCheck(array, size))
+    {
+      printf("sorted yay");
+    }else{
+      printf("unsorted boo");
+    }
 
     printf("\n");
 
@@ -397,6 +419,7 @@ int main(int argc, char **argv){
     adiak::value("comm_large", comm_large);
     adiak::value("comp_large", comp_large);
     adiak::value("correctness_check", correctness_check); 
+    adiak::value("cudaMemcpy", cuda_memcpy); 
 
     mgr.stop();
     mgr.flush();
