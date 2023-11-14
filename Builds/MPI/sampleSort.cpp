@@ -87,8 +87,6 @@ void dataInit(int arr[], int size, int inputType) {
   }
 }
 
-// 1 2 3 4 5 6 7 8 9 10
-
 int main(int argc, char *argv[]) {
   int numValues;
   if (argc == 3)
@@ -101,8 +99,6 @@ int main(int argc, char *argv[]) {
       printf("\n Please provide the size of the array");
       return 0;
   }
-  
-  
   
   int inputType = atoi(argv[2]);
 
@@ -412,6 +408,24 @@ int main(int argc, char *argv[]) {
   const char* algorithm = "Sample Sort";
   const char* programmingModel = "MPI";
   const char* datatype = "int";
+  const char* inputTypeStr;
+  switch (inputType) {
+    case 1:
+      inputTypeStr = "Sorted";
+      break;
+    case 2:
+      inputTypeStr = "Reverse Sorted";
+      break;
+    case 3:
+      inputTypeStr = "Random";
+      break;
+    case 4:
+      inputTypeStr = "1% Perturbed";
+      break;
+    default:
+      inputTypeStr = "No input type. Invalid input argument entered";
+      break;
+  }
 
   adiak::init(NULL);
   adiak::launchdate();
@@ -423,10 +437,10 @@ int main(int argc, char *argv[]) {
   adiak::value("Datatype", datatype); // The datatype of input elements (e.g., double, int, float)
   adiak::value("SizeOfDatatype", 4); // sizeof(datatype) of input elements in bytes (e.g., 1, 2, 4)
   adiak::value("InputSize", numValues); // The number of elements in input dataset (1000)
-  adiak::value("InputType", "ReverseSorted"); // For sorting, this would be "Sorted", "ReverseSorted", "Random", "1%perturbed"
+  adiak::value("InputType", inputTypeStr); // For sorting, this would be "Sorted", "ReverseSorted", "Random", "1%perturbed"
   adiak::value("num_procs", numProcs); // The number of processors (MPI ranks)
   adiak::value("group_num", 10); // The number of your group (integer, e.g., 1, 10)
-  adiak::value("implementation_source", "Handwritten"); // Where you got the source code of your algorithm; choices: ("Online", "AI", "Handwritten").
+  adiak::value("implementation_source", "Handwritten");
 
   adiak::value("main", main_region);
   adiak::value("data_init", data_init);
