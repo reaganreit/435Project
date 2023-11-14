@@ -39,17 +39,72 @@ int correctnessCheck(int arr[], int size) {
   return 1;
 }
 
+// intializes array to be sorted. 1=sorted, 2=reverse sorted, 3=randomized, 4=1% perturbed
+void dataInit(int arr[], int size, int inputType) {
+  int numToSwitch = size / 100;
+  int firstIndex, secondIndex;
+  switch (inputType) {
+    case 1:
+      // sorted
+      for (int i=0; i<size; i++) {
+        arr[i] = i;
+      }
+      break;
+    case 2:
+      // reverse sorted
+      for (int i=0; i<size; i++) {
+        arr[i] = size-i;
+      }
+      break;
+    case 3:
+      // randomized
+      for (int i=0; i<size; i++) {
+        arr[i] = rand() % RAND_MAX;
+      }
+      break;
+    case 4:
+      // 1% perturbed
+      for (int i=0; i<size; i++) {
+        arr[i] = i;
+      }
+      if (numToSwitch == 0)  // at the very least one value should be switched
+        numToSwitch = 1;
+      
+      printf("num to switch: %d\n", numToSwitch);
+      for (int i=0; i<numToSwitch; i++) {
+        firstIndex = rand() % size;
+        secondIndex = rand() % size;
+        printf("first index: %d, second index: %d\n", firstIndex, secondIndex);
+        while (firstIndex == secondIndex) {
+          secondIndex = rand() % size;
+        } 
+        std::swap(arr[firstIndex], arr[secondIndex]); 
+      }
+      break;
+    default:
+      printf("THAT'S NOT A VALID INPUT TYPE");
+      break;
+  }
+}
+
+// 1 2 3 4 5 6 7 8 9 10
+
 int main(int argc, char *argv[]) {
   int numValues;
-  if (argc == 2)
+  if (argc == 3)
   {
       numValues = atoi(argv[1]);
   }
   else
   {
+      printf("%d", argc);
       printf("\n Please provide the size of the array");
       return 0;
   }
+  
+  
+  
+  int inputType = atoi(argv[2]);
 
   int numProcs;
   int	taskid,                /* a task identifier */
@@ -81,14 +136,18 @@ int main(int argc, char *argv[]) {
   if (taskid == MASTER) {
     printf("Sample sort has started with %d tasks.\n", numWorkers);
     printf("Initializing array...\n");
+    printf("Input Type: %d\n", inputType);
     
-    // TODO: implement different data inits
     // initialize master process and generate array values
     CALI_MARK_BEGIN(data_init);
-    for (int i=0; i<numValues; i++) {
-      mainArr[i] = numValues-i;
-    }
+    dataInit(mainArr, numValues, inputType);
     CALI_MARK_END(data_init);
+    
+    printf("initial array\n");
+    for (int num : mainArr) {
+      printf("%d ", num);
+    }
+    printf("\n");
   
     // MASTER distribute numValues equally to each worker
     offset = 0;
