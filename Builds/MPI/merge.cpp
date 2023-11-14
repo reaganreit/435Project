@@ -6,6 +6,7 @@
 #include <caliper/cali-manager.h>
 #include <adiak.hpp>
 
+/**
 double dataInitStart, dataInitEnd, dataInitTime;
 double scatterStart, scatterEnd, scatterTime;
 double gatherStart, gatherEnd, gatherTime;
@@ -13,6 +14,7 @@ double processMergeStart, processMergeEnd, processMergeTime;
 double finalMergeStart, finalMergeEnd, finalMergeTime;
 double checkSortStart, checkSortEnd, checkSortTime;
 double commTime, compTime;
+**/
 
 /********** Caliper Regions **********/
 const char* dataInitialization = "data_init";
@@ -28,6 +30,9 @@ const char* mpiGather = "MPI_Gather";
 
 /********** Merge Function **********/
 void merge(int *a, int *b, int l, int m, int r) {
+	CALI_MARK_BEGIN(comp);
+    CALI_MARK_BEGIN(compLarge);
+
 	int h, i, j, k;
 	h = l;
 	i = l;
@@ -62,18 +67,25 @@ void merge(int *a, int *b, int l, int m, int r) {
 	for(k = l; k <= r; k++) {	
 		a[k] = b[k];
 	}
+
+    CALI_MARK_END(compLarge);
+    CALI_MARK_END(comp);
 }
 
 /********** Recursive Merge Function **********/
 void mergeSort(int *a, int *b, int l, int r) {
 	int m;
+    CALI_MARK_BEGIN(comp);
+    CALI_MARK_BEGIN(compLarge);
 	if(l < r) {	
 		m = (l + r)/2;
- 
+
 		mergeSort(a, b, l, m);
 		mergeSort(a, b, (m + 1), r);
 		merge(a, b, l, m, r);		
 	}
+    CALI_MARK_END(compLarge);
+    CALI_MARK_END(comp);
 }
 
 /********** Data Initialization **********/
@@ -135,19 +147,18 @@ int main(int argc, char** argv) {
         data_init(original_array, n, world_rank);
         CALI_MARK_END(dataInitialization);
         //dataInitEnd = MPI_Wtime();
-
+        /**
         printf("This is the unsorted array: ");
         for (int c = 0; c < n; c++) {
             printf("%d ", original_array[c]);
         }
+        **/
         printf("\n");
     }
     
     //dividing array into equal sized chunks and sending data to each process
     int size = n/world_size;
     int *sub_array = static_cast<int*>(malloc(size * sizeof(int)));
-    printf("processors: %d \n", world_size);
-    printf("num vals: %d \n", n);
     //scatterStart = MPI_Wtime();
     CALI_MARK_BEGIN(comm);
     CALI_MARK_BEGIN(commLarge);
@@ -160,11 +171,13 @@ int main(int argc, char** argv) {
 
     /********** Each process does merge sort **********/
   	int *tmp_array = static_cast<int*>(malloc(size * sizeof(int)));
+    //processMergeStart = MPI_Wtime();
     CALI_MARK_BEGIN(comp);
     CALI_MARK_BEGIN(compLarge);
   	mergeSort(sub_array, tmp_array, 0, (size - 1));
     CALI_MARK_END(compLarge);
     CALI_MARK_END(comp);
+    //processMergeEnd = MPI_Wtime();
     
   	/********** Gather the sorted subarrays into one **********/
   	int *sorted = NULL;
@@ -196,10 +209,12 @@ int main(int argc, char** argv) {
             /********** Check if sorted and print **********/
             if (check_sorted(sorted, n)) {
                 // Display the sorted array
-                printf("This is the sorted array: ");
+                printf("Sorted!!!");
+                /**
                 for (int c = 0; c < n; c++) {
                     printf("%d ", sorted[c]);
                 }
+                **/
             }
             else {
                 printf("Error: The array is not sorted.\n");
@@ -217,12 +232,9 @@ int main(int argc, char** argv) {
   	free(sub_array);
   	free(tmp_array);
  
-    CALI_MARK_BEGIN(comm);
     CALI_MARK_BEGIN(mpiBarrier);
     MPI_Barrier(MPI_COMM_WORLD);
     CALI_MARK_END(mpiBarrier);
-    CALI_MARK_END(comm);
-    
     
     /********** Calculating and printing time *********/
     /**
@@ -244,8 +256,8 @@ int main(int argc, char** argv) {
         printf("Check Sort Time: %f seconds\n", checkSortTime);
         printf("Communication Time: %f seconds\n", commTime);
         printf("Computation Time: %f seconds\n", compTime);
-    }
-    **/
+    }**/
+
     CALI_MARK_END(mainCali);
 
     adiak::init(NULL);
@@ -276,5 +288,5 @@ int main(int argc, char** argv) {
     /********** Finalize MPI **********/    
     mgr.stop();
     mgr.flush();
-	MPI_Finalize();
+	  MPI_Finalize();
 }
