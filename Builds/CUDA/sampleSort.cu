@@ -29,7 +29,38 @@ const char* comp_large = "comp_large";
 
 using namespace std;
 
-__global__ void sampleSort(int* data, int* out, int *splitters, int num_buckets) {
+void chooseSplitters(int *splitters, int *samples) {
+    // samples
+    int samplesSize = BLOCKS * (BLOCKS-1);
+    for (int i = 0; i < samplesSize - 1; ++i) {
+      for (int j = 0; j < samplesSize - i - 1; ++j) {
+          if (samples[j] > samples[j + 1]) {
+              // Swap elements if they are in the wrong order
+              int temp = samples[j];
+              samples[j] = samples[j + 1];
+              samples[j + 1] = temp;
+          }
+      }
+    }
+    
+    cout << "sorted samples" << endl;
+    for (int i = 0; i < samplesSize; ++i) {
+        cout << samples[i] << " ";
+    }
+    cout << endl;
+    
+    // choose splitters
+    int spacing = std::ceil((float)samplesSize/(float)BLOCKS);
+    int splitterIndex = spacing-1;
+    
+    for (int i = 0; i < BLOCKS-1; i++) {
+      splitters[i] = samples[splitterIndex];
+      splitterIndex += spacing;
+    }
+}
+
+
+__global__ void chooseSamples(int* data, int* out, int *samples, int numBlocks) {
     int index = blockDim.x * blockIdx.x + threadIdx.x;
     
     // only smallest thread sorts block
@@ -45,12 +76,25 @@ __global__ void sampleSort(int* data, int* out, int *splitters, int num_buckets)
             }
         }
       }
-
+      
+      // choose samples from sorted block
+      int spacing = blockDim.x /(numBlocks-1);
+      int sampleIndex = spacing-1;
+      
+      for (int i = 0; i < numBlocks-1; i++) {
+        samples[blockIdx.x * (numBlocks-1) + i] = data[index+sampleIndex];
+        printf("sample index: %d ", blockIdx.x * (numBlocks-1) + i);
+        //printf("index: %d\n", index);
+        sampleIndex += spacing;
+      }
+      
+      
       // Write the sorted data back to the global memory
       for (int i = 0; i < blockDim.x; ++i) {
           out[blockDim.x * blockIdx.x + i] = data[index + i];
       }
     }
+
     
 }
 
@@ -70,53 +114,56 @@ int main(int argc, char *argv[])
     // Create caliper ConfigManager object
     cali::ConfigManager mgr;
     mgr.start();
-    
-    int *out = (int*)malloc(sizeof(int) * NUM_VALS);
 
-    // initialize data according to inputType
+    // host data
     int* hostData = new int[NUM_VALS];
+    int *out = (int*)malloc(sizeof(int) * NUM_VALS);
+    int *splitters = new int[BLOCKS-1]; 
+    int *samples = (int*)malloc(sizeof(int) * (BLOCKS-1)*BLOCKS);  // each block picks out potential splitter candidates
+    
+    // initialize data according to inputType
     for (int i = 0; i < NUM_VALS; ++i) {
         hostData[i] = NUM_VALS-i;
     }
-    
     cout << "original arr" << endl;  
     for (int i = 0; i < NUM_VALS; ++i) {
         cout << hostData[i] << " ";
     }
     cout << endl;  
-    
-    // NUM SPLITTERS should equal # of blocks-1
-    int* splitters = new int[3];
-    for (int i = 1; i <= 3; ++i) {
-        splitters[i-1] = 10 * i;
-    }
-    
-    cout << "splitters" << endl;  
-    for (int i = 0; i < 3; ++i) {
-        cout << splitters[i] << " ";
-    }
-    cout << endl;
+
     // device data
-    int* devData, *dout, *dsplitters;
+    int* devData, *dout, *dsplitters, *dsamples;
     cudaMalloc((void**)&devData, NUM_VALS * sizeof(int));
     cudaMalloc((void**)&dout, NUM_VALS * sizeof(int));
-    cudaMalloc((void**)&dsplitters, 3 * sizeof(int));
+    cudaMalloc((void**)&dsplitters, (BLOCKS-1) * sizeof(int));
+    cudaMalloc((void**)&dsamples, (BLOCKS-1)*BLOCKS * sizeof(int));
     
     // send chunks to device
     cudaMemcpy(devData, hostData, NUM_VALS * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(dsplitters, splitters, 3 * sizeof(int), cudaMemcpyHostToDevice);
     
     // have device sort and send back samples
-    sampleSort<<<BLOCKS, THREADS>>>(devData, dout, dsplitters, 10);
+    chooseSamples<<<BLOCKS, THREADS>>>(devData, dout, dsamples, BLOCKS);
     
-    // test send back
+    // receive samples from device
     cudaMemcpy(out, dout, sizeof(int) * NUM_VALS, cudaMemcpyDeviceToHost);
+    cudaMemcpy(samples, dsamples, (BLOCKS-1) * BLOCKS * sizeof(int), cudaMemcpyDeviceToHost);
     for (int i = 0; i < NUM_VALS; ++i) {
         cout << out[i] << " ";
     }
     cout << endl;
-    
-    // sort samples in device and choose splitters
+    cout << "SAMPLES" << endl;
+    for (int i = 0; i < (BLOCKS-1)*BLOCKS; ++i) {
+        cout << samples[i] << " ";
+    }
+    cout << endl;
+
+    // sort samples and choose splitters
+    chooseSplitters(splitters, samples);
+    cout << "chosen splitters" << endl;
+    for (int i = 0; i < BLOCKS-1; ++i) {
+        cout << splitters[i] << " ";
+    }
+    cout << endl;
     
     // have 2d arr. each row is a diff bucket
     
