@@ -29,6 +29,21 @@ const char* comp_large = "comp_large";
 
 using namespace std;
 
+void finalSort(int** buckets, int rows) {
+    for (int r = 0; r < rows; ++r) {
+        for (int i = 0; i < NUM_VALS - 1; ++i) {
+          for (int j = 0; j < NUM_VALS - i - 1; ++j) {
+              if (buckets[r][j] > buckets[r][j + 1]) {
+                  // Swap elements if they are in the wrong order
+                  int temp = buckets[r][j];
+                  buckets[r][j] = buckets[r][j + 1];
+                  buckets[r][j + 1] = temp;
+              }
+          }
+        }
+    }
+}
+
 void chooseSplitters(int *splitters, int *samples) {
     // samples
     int samplesSize = BLOCKS * (BLOCKS-1);
@@ -200,12 +215,25 @@ int main(int argc, char *argv[])
     int** dbuckets;
     int* dflattenedArr;
     cudaMalloc((void**)&dflattenedArr, rows * NUM_VALS * sizeof(int));
+    for (int i = 0; i < rows; ++i) {
+        buckets[i] = new int[NUM_VALS];
+    }
+    
+    // initalize buckets with -1 so we know what to remove later
+    for (int i = 0; i < rows; i++) {
+      for (int j = 0; j < NUM_VALS; j++) {
+        buckets[i][j] = -1;
+      }
+    }
+    
+    // Allocate device memory for the 2D array
     cudaMalloc((void**)&dbuckets, rows * sizeof(int*));
     for (int i = 0; i < rows; ++i) {
-        cudaMalloc((void**)&buckets[i], NUM_VALS * sizeof(int));
-        cudaMemcpy(dbuckets + i, &(buckets[i]), sizeof(int*), cudaMemcpyHostToDevice);
+        int* d_row;
+        cudaMalloc((void**)&d_row, NUM_VALS * sizeof(int));
+        cudaMemcpy(d_row, buckets[i], NUM_VALS * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(dbuckets + i, &d_row, sizeof(int*), cudaMemcpyHostToDevice);
     }
-    cudaMemcpy(dbuckets, buckets, rows * sizeof(int*), cudaMemcpyHostToDevice);  // Copy the row pointers to the device
     
     // send chunks to device w/ splitters
     cudaMemcpy(dsplitters, splitters, sizeof(int) * (BLOCKS-1), cudaMemcpyHostToDevice);
@@ -213,11 +241,8 @@ int main(int argc, char *argv[])
     
     int *flattenedArr = (int*)malloc(sizeof(int) * (BLOCKS-1)*NUM_VALS);
     cudaMemcpy(flattenedArr, dflattenedArr, (BLOCKS-1) * NUM_VALS * sizeof(int), cudaMemcpyDeviceToHost);
-    cout << "flattened" << endl;
-    for (int i = 0; i < NUM_VALS * (BLOCKS-1); i++) {
-      cout << flattenedArr[i] << " ";
-    }
     
+    // initializing unflattened arr
     int** unflattened = new int*[rows];
     for (int i = 0; i < rows; ++i) {
         unflattened[i] = new int[NUM_VALS];
@@ -231,7 +256,7 @@ int main(int argc, char *argv[])
         }
     }
     
-    cout << "unflattened" << endl;
+    cout << endl << "unflattened" << endl;
     for (int i = 0; i < rows; ++i) {
         for (int j = 0; j < NUM_VALS; ++j) {
             cout << unflattened[i][j] << " ";
@@ -239,26 +264,33 @@ int main(int argc, char *argv[])
         cout << endl;
     }
     
-    
-    
-    // cudaMemcpy(buckets, dbuckets, rows * sizeof(int*), cudaMemcpyDeviceToHost);
-    
-    /*
-    cout << "buckets" << endl;
-    for (int i = 0; i < rows; ++i) {
-        for (int j = 0; j < NUM_VALS; j++) {
-          cout << buckets[i][j] << " ";
-        }
-    }
-    cout << endl;
-    */
-    
-    // send buckets back from device to host and append to global 2d buckets arr
-    
     // final sort each row
+    finalSort(unflattened, rows);
+    
+    cout << endl << "sorted unflattened" << endl;
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < NUM_VALS; ++j) {
+            cout << unflattened[i][j] << " ";
+        }
+        cout << endl;
+    }
     
     // append to one array and done!
-
+    int* finalArr = new int[NUM_VALS];
+    int finalArrIndex = 0;
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < NUM_VALS; ++j) {
+            if (unflattened[i][j] != -1) {
+              finalArr[finalArrIndex++] = unflattened[i][j];
+            }
+        }
+        
+    }
+    
+    cout << "FINAL ARRAY" << endl;
+    for (int i = 0; i < NUM_VALS; i++) {
+      cout << finalArr[i] << " ";
+    }
 
     // Flush Caliper output before finalizing MPI
     mgr.stop();
