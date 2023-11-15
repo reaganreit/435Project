@@ -16,18 +16,75 @@ int THREADS;
 int BLOCKS;
 int NUM_VALS;
 
-/* Define Caliper region names */
+// Cali Regions
 const char* main_region = "main";
 const char* data_init = "data_init";
-const char* correctness_check = "correctness_check";
-const char* comm = "comm";
-const char* comm_small = "comm_small";
-const char* comm_large = "comm_large";
 const char* comp = "comp";
+const char* comm = "comm";
 const char* comp_small = "comp_small";
+const char* comm_small = "comm_small";
 const char* comp_large = "comp_large";
+const char* comm_large = "comm_large";
+const char* correctness_check = "correctness_check";
 
 using namespace std;
+
+int correctnessCheck(int *arr, int size) {
+  CALI_MARK_BEGIN(correctness_check);
+  for (int i=0; i<size-1; i++) {
+    if (arr[i+1] < arr[i])
+      return 0;  // means it's not ordered correctly
+  }
+  CALI_MARK_END(correctness_check);
+
+  return 1;
+}
+
+void dataInit(int *arr, int size, int inputType) {
+  int numToSwitch = size / 100;
+  int firstIndex, secondIndex;
+  switch (inputType) {
+    case 1:
+      // sorted
+      for (int i=0; i<size; i++) {
+        arr[i] = i;
+      }
+      break;
+    case 2:
+      // reverse sorted
+      for (int i=0; i<size; i++) {
+        arr[i] = size-i;
+      }
+      break;
+    case 3:
+      // randomized
+      for (int i=0; i<size; i++) {
+        arr[i] = rand() % RAND_MAX;
+      }
+      break;
+    case 4:
+      // 1% perturbed
+      for (int i=0; i<size; i++) {
+        arr[i] = i;
+      }
+      if (numToSwitch == 0)  // at the very least one value should be switched
+        numToSwitch = 1;
+      
+      for (int i=0; i<numToSwitch; i++) {
+        firstIndex = rand() % size;
+        secondIndex = rand() % size;
+        //printf("first index: %d, second index: %d\n", firstIndex, secondIndex);
+        while (firstIndex == secondIndex) {
+          secondIndex = rand() % size;
+        } 
+        std::swap(arr[firstIndex], arr[secondIndex]); 
+      }
+      break;
+    default:
+      printf("THAT'S NOT A VALID INPUT TYPE");
+      break;
+  }
+}
 
 void finalSort(int** buckets, int rows) {
     for (int r = 0; r < rows; ++r) {
@@ -58,12 +115,6 @@ void chooseSplitters(int *splitters, int *samples) {
       }
     }
     
-    cout << "sorted samples" << endl;
-    for (int i = 0; i < samplesSize; ++i) {
-        cout << samples[i] << " ";
-    }
-    cout << endl;
-    
     // choose splitters
     int spacing = std::ceil((float)samplesSize/(float)BLOCKS);
     int splitterIndex = spacing-1;
@@ -75,7 +126,7 @@ void chooseSplitters(int *splitters, int *samples) {
 }
 
 
-__global__ void chooseSamples(int* data, int* out, int *samples, int numBlocks) {
+__global__ void chooseSamples(int* data, int *samples, int numBlocks) {
     int index = blockDim.x * blockIdx.x + threadIdx.x;
     
     // only smallest thread sorts block
@@ -98,15 +149,7 @@ __global__ void chooseSamples(int* data, int* out, int *samples, int numBlocks) 
       
       for (int i = 0; i < numBlocks-1; i++) {
         samples[blockIdx.x * (numBlocks-1) + i] = data[index+sampleIndex];
-        printf("sample index: %d ", blockIdx.x * (numBlocks-1) + i);
-        //printf("index: %d\n", index);
         sampleIndex += spacing;
-      }
-      
-      
-      // Write the sorted data back to the global memory
-      for (int i = 0; i < blockDim.x; ++i) {
-          out[blockDim.x * blockIdx.x + i] = data[index + i];
       }
     }
 
@@ -161,14 +204,12 @@ int main(int argc, char *argv[])
 
     // host data
     int* hostData = new int[NUM_VALS];
-    int *out = (int*)malloc(sizeof(int) * NUM_VALS);
     int *splitters = new int[BLOCKS-1]; 
     int *samples = (int*)malloc(sizeof(int) * (BLOCKS-1)*BLOCKS);  // each block picks out potential splitter candidates
     
     // initialize data according to inputType
-    for (int i = 0; i < NUM_VALS; ++i) {
-        hostData[i] = NUM_VALS-i;
-    }
+    dataInit(hostData, NUM_VALS, inputType);
+    
     cout << "original arr" << endl;  
     for (int i = 0; i < NUM_VALS; ++i) {
         cout << hostData[i] << " ";
@@ -176,9 +217,8 @@ int main(int argc, char *argv[])
     cout << endl;  
 
     // device data
-    int* devData, *dout, *dsplitters, *dsamples;
+    int* devData, *dsplitters, *dsamples;
     cudaMalloc((void**)&devData, NUM_VALS * sizeof(int));
-    cudaMalloc((void**)&dout, NUM_VALS * sizeof(int));
     cudaMalloc((void**)&dsplitters, (BLOCKS-1) * sizeof(int));
     cudaMalloc((void**)&dsamples, (BLOCKS-1)*BLOCKS * sizeof(int));
     
@@ -186,28 +226,13 @@ int main(int argc, char *argv[])
     cudaMemcpy(devData, hostData, NUM_VALS * sizeof(int), cudaMemcpyHostToDevice);
     
     // have device sort and send back samples
-    chooseSamples<<<BLOCKS, THREADS>>>(devData, dout, dsamples, BLOCKS);
+    chooseSamples<<<BLOCKS, THREADS>>>(devData, dsamples, BLOCKS);
     
     // receive samples from device
-    cudaMemcpy(out, dout, sizeof(int) * NUM_VALS, cudaMemcpyDeviceToHost);
     cudaMemcpy(samples, dsamples, (BLOCKS-1) * BLOCKS * sizeof(int), cudaMemcpyDeviceToHost);
-    for (int i = 0; i < NUM_VALS; ++i) {
-        cout << out[i] << " ";
-    }
-    cout << endl;
-    cout << "SAMPLES" << endl;
-    for (int i = 0; i < (BLOCKS-1)*BLOCKS; ++i) {
-        cout << samples[i] << " ";
-    }
-    cout << endl;
 
     // sort samples and choose splitters
     chooseSplitters(splitters, samples);
-    cout << "chosen splitters" << endl;
-    for (int i = 0; i < BLOCKS-1; ++i) {
-        cout << splitters[i] << " ";
-    }
-    cout << endl;
     
     // allocate memory for host and device 2d bucket arrays
     int rows = BLOCKS-1;
@@ -256,24 +281,8 @@ int main(int argc, char *argv[])
         }
     }
     
-    cout << endl << "unflattened" << endl;
-    for (int i = 0; i < rows; ++i) {
-        for (int j = 0; j < NUM_VALS; ++j) {
-            cout << unflattened[i][j] << " ";
-        }
-        cout << endl;
-    }
-    
     // final sort each row
     finalSort(unflattened, rows);
-    
-    cout << endl << "sorted unflattened" << endl;
-    for (int i = 0; i < rows; ++i) {
-        for (int j = 0; j < NUM_VALS; ++j) {
-            cout << unflattened[i][j] << " ";
-        }
-        cout << endl;
-    }
     
     // append to one array and done!
     int* finalArr = new int[NUM_VALS];
@@ -290,6 +299,12 @@ int main(int argc, char *argv[])
     cout << "FINAL ARRAY" << endl;
     for (int i = 0; i < NUM_VALS; i++) {
       cout << finalArr[i] << " ";
+    }
+    
+    if (correctnessCheck(finalArr, NUM_VALS)) {
+      printf("\nCORRECT");
+    } else {
+      printf("\nINCORRECT");
     }
 
     // Flush Caliper output before finalizing MPI
