@@ -98,6 +98,35 @@ __global__ void chooseSamples(int* data, int* out, int *samples, int numBlocks) 
     
 }
 
+__global__ void sampleSort(int* data, int** buckets, int* splitters, int* flattenedArr, int numSplitters, int numVals) {
+    
+    int index = blockDim.x * blockIdx.x + threadIdx.x;
+       
+    // each thread checks which bucket they fall into
+    int j = 0;
+    while(j < numSplitters) {  // j being which bucket it should belong to
+  			if (j == numSplitters-1) {
+          // means it should go in last bucket
+          // makes sure that we don't try to access splitters[buckets.size()-1]. will go out of range
+          buckets[j][index] = data[index];
+          break;
+        }
+        if(data[index] < splitters[j]) {
+  				buckets[j][index] = data[index];
+          break;
+  			}
+  			j++;
+    }
+    
+    // store bucket values in flattened array
+    int arrIndex = 0;
+    for (int i = 0; i < numSplitters; ++i) {
+        for (int j = 0; j < numVals; ++j) {
+            flattenedArr[arrIndex++] = buckets[i][j];
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
     int inputType;
@@ -165,10 +194,64 @@ int main(int argc, char *argv[])
     }
     cout << endl;
     
-    // have 2d arr. each row is a diff bucket
+    // allocate memory for host and device 2d bucket arrays
+    int rows = BLOCKS-1;
+    int** buckets = new int*[rows];
+    int** dbuckets;
+    int* dflattenedArr;
+    cudaMalloc((void**)&dflattenedArr, rows * NUM_VALS * sizeof(int));
+    cudaMalloc((void**)&dbuckets, rows * sizeof(int*));
+    for (int i = 0; i < rows; ++i) {
+        cudaMalloc((void**)&buckets[i], NUM_VALS * sizeof(int));
+        cudaMemcpy(dbuckets + i, &(buckets[i]), sizeof(int*), cudaMemcpyHostToDevice);
+    }
+    cudaMemcpy(dbuckets, buckets, rows * sizeof(int*), cudaMemcpyHostToDevice);  // Copy the row pointers to the device
     
     // send chunks to device w/ splitters
-    // each thread puts values in buckets
+    cudaMemcpy(dsplitters, splitters, sizeof(int) * (BLOCKS-1), cudaMemcpyHostToDevice);
+    sampleSort<<<BLOCKS, THREADS>>>(devData, dbuckets, dsplitters, dflattenedArr, BLOCKS-1, NUM_VALS);
+    
+    int *flattenedArr = (int*)malloc(sizeof(int) * (BLOCKS-1)*NUM_VALS);
+    cudaMemcpy(flattenedArr, dflattenedArr, (BLOCKS-1) * NUM_VALS * sizeof(int), cudaMemcpyDeviceToHost);
+    cout << "flattened" << endl;
+    for (int i = 0; i < NUM_VALS * (BLOCKS-1); i++) {
+      cout << flattenedArr[i] << " ";
+    }
+    
+    int** unflattened = new int*[rows];
+    for (int i = 0; i < rows; ++i) {
+        unflattened[i] = new int[NUM_VALS];
+    }
+    
+    // unflatten the arr
+    int index = 0;
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < NUM_VALS; ++j) {
+            unflattened[i][j] = flattenedArr[index++];
+        }
+    }
+    
+    cout << "unflattened" << endl;
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < NUM_VALS; ++j) {
+            cout << unflattened[i][j] << " ";
+        }
+        cout << endl;
+    }
+    
+    
+    
+    // cudaMemcpy(buckets, dbuckets, rows * sizeof(int*), cudaMemcpyDeviceToHost);
+    
+    /*
+    cout << "buckets" << endl;
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < NUM_VALS; j++) {
+          cout << buckets[i][j] << " ";
+        }
+    }
+    cout << endl;
+    */
     
     // send buckets back from device to host and append to global 2d buckets arr
     
