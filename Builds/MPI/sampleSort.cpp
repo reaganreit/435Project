@@ -29,6 +29,7 @@ const char* comm_large = "comm_large";
 const char* correctness_check = "correctness_check";
 
 int correctnessCheck(int arr[], int size) {
+  printf("entered correctness");
   CALI_MARK_BEGIN(correctness_check);
   for (int i=0; i<size-1; i++) {
     if (arr[i+1] < arr[i])
@@ -70,11 +71,10 @@ void dataInit(int arr[], int size, int inputType) {
       if (numToSwitch == 0)  // at the very least one value should be switched
         numToSwitch = 1;
       
-      printf("num to switch: %d\n", numToSwitch);
       for (int i=0; i<numToSwitch; i++) {
         firstIndex = rand() % size;
         secondIndex = rand() % size;
-        printf("first index: %d, second index: %d\n", firstIndex, secondIndex);
+        // printf("first index: %d, second index: %d\n", firstIndex, secondIndex);
         while (firstIndex == secondIndex) {
           secondIndex = rand() % size;
         } 
@@ -139,11 +139,13 @@ int main(int argc, char *argv[]) {
     dataInit(mainArr, numValues, inputType);
     CALI_MARK_END(data_init);
     
+    /*
     printf("initial array\n");
     for (int num : mainArr) {
       printf("%d ", num);
     }
     printf("\n");
+    */
   
     // MASTER distribute numValues equally to each worker
     offset = 0;
@@ -191,19 +193,16 @@ int main(int argc, char *argv[]) {
     // choose global splitters
     int globalSplitters[numWorkers-1];
     int spacing = std::ceil((float)totalSamples.size()/(float)numWorkers);
-    //printf("spacing: %d\n", spacing);
     int index = spacing-1;
     CALI_MARK_BEGIN(comp);
     CALI_MARK_BEGIN(comp_small);
     for (int i=0; i<numWorkers-1; i++) {
       globalSplitters[i] = totalSamples[index];
-      //printf("index: %d\n", index);
       index += spacing;
     }
     CALI_MARK_END(comp_small);
     CALI_MARK_END(comp);
     
-    // TODO: make selection more evenly spaced?
     printf("Global splitters: ");
     for (int splitter: globalSplitters) {
        printf("%d ", splitter); 
@@ -240,7 +239,6 @@ int main(int argc, char *argv[]) {
          int buckets[numWorkers][avgVals+1];
          MPI_Recv(&buckets, numWorkers*(avgVals+1), MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
          printf("Received results from task %d\n",source);
-         printf("Bucket contents\n");
          for (int i=0; i<numWorkers; i++) {
            for (int j=0; j<avgVals+1; j++) {
              if (buckets[i][j] != -1)
@@ -250,6 +248,7 @@ int main(int argc, char *argv[]) {
     }
     CALI_MARK_END(comm_large);
     CALI_MARK_END(comm);
+    printf("received all results\n");
     
     // sort each row/bucket
     CALI_MARK_BEGIN(comp);
@@ -259,6 +258,7 @@ int main(int argc, char *argv[]) {
     }
     CALI_MARK_END(comp_large);
     CALI_MARK_END(comp);
+    printf("finished sorting buckets\n");
     
     // concatenate results into final array
     CALI_MARK_BEGIN(comp);
@@ -272,7 +272,8 @@ int main(int argc, char *argv[]) {
     }
     CALI_MARK_END(comp_large);
     CALI_MARK_END(comp);
-    
+    printf("concatenated results\n");
+    /*
     printf("final index: %d\n", finalIndex);
     // check final array
     printf("FINAL ARRAY\n");
@@ -280,6 +281,7 @@ int main(int argc, char *argv[]) {
       printf("%d ", num);
     }
     printf("\n");
+    */
     
     if (correctnessCheck(finalArr, numValues)) {
       printf("CORRECT");
@@ -325,14 +327,7 @@ int main(int argc, char *argv[]) {
     }
     CALI_MARK_END(comp_small);
     CALI_MARK_END(comp);
-    
-    //printf("vector size: %d\n", chosenSamples.size());
-    //printf("num workers: %d\n", numWorkers);
-    printf("Chosen samples: ");
-    for (int sample: chosenSamples) {
-      printf("%d ", sample);
-    }
-    printf("\n");
+
     // All workers send their sample elements to master process
     // MPI_Send chosenSamples to MASTER
     mtype = FROM_WORKER;
@@ -348,15 +343,18 @@ int main(int argc, char *argv[]) {
     CALI_MARK_BEGIN(comm);
     CALI_MARK_BEGIN(comm_small);
     MPI_Recv(&splitters, numWorkers-1, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
+    MPI_Recv(&mainArr, numValues, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
     CALI_MARK_END(comm_small);
     CALI_MARK_END(comm);
     printf("task %d received splitters\n", taskid);
     
+    /*
     printf("splitters\n");
     for (int splitter: splitters) {
       printf("%d ", splitter);
     }
     printf("\n");
+    */
     
     int buckets[numWorkers][avgVals+1];
     int arrIndex[numWorkers];
@@ -378,14 +376,12 @@ int main(int argc, char *argv[]) {
           // means it should go in last bucket
           // makes sure that we don't try to access splitters[buckets.size()-1]. will go out of range
           buckets[j][arrIndex[j]] = num;
-          printf("pushed %d into bucket %d\n", num, j);
           arrIndex[j]++;
           break;
         }
         if(num < splitters[j]) {
   				buckets[j][arrIndex[j]] = num;
           arrIndex[j]++;
-          printf("pushed %d into bucket %d\n", num, j);
           break;
   			}
   			j++;
@@ -401,6 +397,7 @@ int main(int argc, char *argv[]) {
     MPI_Send(&buckets, numWorkers*(avgVals+1), MPI_INT, MASTER, mtype, MPI_COMM_WORLD);
     CALI_MARK_END(comm_large);
     CALI_MARK_END(comm);
+    printf("task %d sent to master\n", taskid);
   }
 
   CALI_MARK_END(main_region);
