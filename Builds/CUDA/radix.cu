@@ -28,6 +28,10 @@ const char* comp_large = "comp_large";
 const char* comm_large = "comm_large";
 const char* correctness_check = "correctness_check";
 const char* cuda_memcpy = "cudaMemcpy";
+const char* comp_small = "comp_small";
+const char* comm_small = "comm_small";
+
+const char* inputType= "Random";
 
 int correctnessCheck(int arr[], int size) {
   CALI_MARK_BEGIN(correctness_check);
@@ -240,6 +244,8 @@ void radixSort(int * array, int size, int BLOCKSIZE){
     CALI_MARK_END(comp);
 
     CALI_MARK_BEGIN(comm);
+    CALI_MARK_BEGIN(comm_small);
+   CALI_MARK_END(comm_small);
     CALI_MARK_BEGIN(comm_large);
     CALI_MARK_BEGIN(cuda_memcpy);
     cudaMemcpy(inputArray, array, sizeof(int)*size, cudaMemcpyHostToDevice);
@@ -270,6 +276,8 @@ void radixSort(int * array, int size, int BLOCKSIZE){
         CALI_MARK_END(comm);
 
         CALI_MARK_BEGIN(comp);
+        CALI_MARK_BEGIN(comp_small);
+        CALI_MARK_END(comp_small);
         CALI_MARK_BEGIN(comp_large);
         histogramKernel<<<blockCount, threadCount>>>(inputArray, blockBucketArray, radixArray, size, significantDigit);  
         CALI_MARK_END(comp_large);
@@ -341,7 +349,10 @@ int main(int argc, char **argv){
     CALI_MARK_BEGIN(main_region);
 
     THREADSIZE = atoi(argv[1]);
+    std::cout<<"threads "<<THREADSIZE<<std::endl;
     SIZE = atoi(argv[2]);
+    int inputTypeInt = atoi(argv[3]);
+    std::cout<<"input type "<<inputTypeInt<<std::endl;
     BLOCKSIZE = ((SIZE-1)/THREADSIZE + 1); //SIZE / THREADSIZE;
     int size = SIZE;
     int* array;
@@ -381,7 +392,6 @@ int main(int argc, char **argv){
 
     printf("\n");
 
-    return 0;
 
     CALI_MARK_END(main_region);
 
@@ -389,13 +399,13 @@ int main(int argc, char **argv){
     const char* programmingModel = "CUDA"; 
     const char* datatype = "int"; 
     int sizeOfDatatype =4;
-    int inputSize =1000; 
-    const char* inputType= "Random";
-    int num_threads = size; 
+    int inputSize =SIZE; 
+    int num_threads = THREADSIZE; 
     int num_blocks = BLOCKSIZE;
     int group_number =10;
     const char* implementation_source = "Online";
 
+  
     adiak::init(NULL);
     adiak::launchdate();    // launch date of the job
     adiak::libraries();     // Libraries used
@@ -423,4 +433,5 @@ int main(int argc, char **argv){
 
     mgr.stop();
     mgr.flush();
+    return 0;
 }
