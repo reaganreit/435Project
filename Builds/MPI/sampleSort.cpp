@@ -29,6 +29,7 @@ const char* comm_large = "comm_large";
 const char* correctness_check = "correctness_check";
 
 int correctnessCheck(int arr[], int size) {
+  printf("entered correctness");
   CALI_MARK_BEGIN(correctness_check);
   for (int i=0; i<size-1; i++) {
     if (arr[i+1] < arr[i])
@@ -247,6 +248,7 @@ int main(int argc, char *argv[]) {
     }
     CALI_MARK_END(comm_large);
     CALI_MARK_END(comm);
+    printf("received all results\n");
     
     // sort each row/bucket
     CALI_MARK_BEGIN(comp);
@@ -256,6 +258,7 @@ int main(int argc, char *argv[]) {
     }
     CALI_MARK_END(comp_large);
     CALI_MARK_END(comp);
+    printf("finished sorting buckets\n");
     
     // concatenate results into final array
     CALI_MARK_BEGIN(comp);
@@ -269,7 +272,7 @@ int main(int argc, char *argv[]) {
     }
     CALI_MARK_END(comp_large);
     CALI_MARK_END(comp);
-    
+    printf("concatenated results\n");
     /*
     printf("final index: %d\n", finalIndex);
     // check final array
