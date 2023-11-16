@@ -41,6 +41,7 @@ int correctnessCheck(int *arr, int size) {
 }
 
 void dataInit(int *arr, int size, int inputType) {
+  CALI_MARK_BEGIN(data_init);
   int numToSwitch = size / 100;
   int firstIndex, secondIndex;
   switch (inputType) {
@@ -84,6 +85,8 @@ void dataInit(int *arr, int size, int inputType) {
       printf("THAT'S NOT A VALID INPUT TYPE");
       break;
   }
+  
+  CALI_MARK_END(data_init);
 }
 
 void finalSort(int** buckets, int rows) {
@@ -102,7 +105,7 @@ void finalSort(int** buckets, int rows) {
 }
 
 void chooseSplitters(int *splitters, int *samples) {
-    // samples
+    // sort samples
     int samplesSize = BLOCKS * (BLOCKS-1);
     for (int i = 0; i < samplesSize - 1; ++i) {
       for (int j = 0; j < samplesSize - i - 1; ++j) {
@@ -201,6 +204,8 @@ int main(int argc, char *argv[])
     // Create caliper ConfigManager object
     cali::ConfigManager mgr;
     mgr.start();
+    
+    CALI_MARK_BEGIN(main_region);
 
     // host data
     int* hostData = new int[NUM_VALS];
@@ -221,18 +226,39 @@ int main(int argc, char *argv[])
     cudaMalloc((void**)&devData, NUM_VALS * sizeof(int));
     cudaMalloc((void**)&dsplitters, (BLOCKS-1) * sizeof(int));
     cudaMalloc((void**)&dsamples, (BLOCKS-1)*BLOCKS * sizeof(int));
+    cout << "device data" << endl;
     
     // send chunks to device
+    CALI_MARK_BEGIN(comm);
+    CALI_MARK_BEGIN(comm_large);
     cudaMemcpy(devData, hostData, NUM_VALS * sizeof(int), cudaMemcpyHostToDevice);
+    CALI_MARK_END(comm_large);
+    CALI_MARK_END(comm);
+    cout << "send chunks" << endl;
     
     // have device sort and send back samples
+    CALI_MARK_BEGIN(comp);
+    CALI_MARK_BEGIN(comp_large);
     chooseSamples<<<BLOCKS, THREADS>>>(devData, dsamples, BLOCKS);
+    CALI_MARK_END(comp_large);
+    CALI_MARK_END(comp);
+    cout << "choose samples" << endl;
     
     // receive samples from device
+    CALI_MARK_BEGIN(comm);
+    CALI_MARK_BEGIN(comm_small);
     cudaMemcpy(samples, dsamples, (BLOCKS-1) * BLOCKS * sizeof(int), cudaMemcpyDeviceToHost);
-
+    CALI_MARK_END(comm_small);
+    CALI_MARK_END(comm);
+    cout << "receive samples" << endl;
+    
     // sort samples and choose splitters
+    CALI_MARK_BEGIN(comp);
+    CALI_MARK_BEGIN(comp_small);
     chooseSplitters(splitters, samples);
+    CALI_MARK_END(comp_small);
+    CALI_MARK_END(comp);
+    cout << "choose splitters" << endl;
     
     // allocate memory for host and device 2d bucket arrays
     int rows = BLOCKS-1;
@@ -252,6 +278,8 @@ int main(int argc, char *argv[])
     }
     
     // Allocate device memory for the 2D array
+    CALI_MARK_BEGIN(comm);
+    CALI_MARK_BEGIN(comm_large);
     cudaMalloc((void**)&dbuckets, rows * sizeof(int*));
     for (int i = 0; i < rows; ++i) {
         int* d_row;
@@ -259,13 +287,31 @@ int main(int argc, char *argv[])
         cudaMemcpy(d_row, buckets[i], NUM_VALS * sizeof(int), cudaMemcpyHostToDevice);
         cudaMemcpy(dbuckets + i, &d_row, sizeof(int*), cudaMemcpyHostToDevice);
     }
+    CALI_MARK_END(comm_large);
+    CALI_MARK_END(comm);
     
     // send chunks to device w/ splitters
+    CALI_MARK_BEGIN(comm);
+    CALI_MARK_BEGIN(comm_small);
     cudaMemcpy(dsplitters, splitters, sizeof(int) * (BLOCKS-1), cudaMemcpyHostToDevice);
+    CALI_MARK_END(comm_small);
+    CALI_MARK_END(comm);
+    cout << "send chunks" << endl;
+    
+    CALI_MARK_BEGIN(comp);
+    CALI_MARK_BEGIN(comp_large);
     sampleSort<<<BLOCKS, THREADS>>>(devData, dbuckets, dsplitters, dflattenedArr, BLOCKS-1, NUM_VALS);
+    CALI_MARK_END(comp_large);
+    CALI_MARK_END(comp);
+    cout << "sample sort" << endl;
     
     int *flattenedArr = (int*)malloc(sizeof(int) * (BLOCKS-1)*NUM_VALS);
+    CALI_MARK_BEGIN(comm);
+    CALI_MARK_BEGIN(comm_large);
     cudaMemcpy(flattenedArr, dflattenedArr, (BLOCKS-1) * NUM_VALS * sizeof(int), cudaMemcpyDeviceToHost);
+    CALI_MARK_END(comm_large);
+    CALI_MARK_END(comm);
+    
     
     // initializing unflattened arr
     int** unflattened = new int*[rows];
@@ -282,7 +328,10 @@ int main(int argc, char *argv[])
     }
     
     // final sort each row
+    CALI_MARK_BEGIN(comp);
+    CALI_MARK_BEGIN(comp_large);
     finalSort(unflattened, rows);
+    cout << "final sort" << endl;
     
     // append to one array and done!
     int* finalArr = new int[NUM_VALS];
@@ -295,6 +344,8 @@ int main(int argc, char *argv[])
         }
         
     }
+    CALI_MARK_END(comp_large);
+    CALI_MARK_END(comp);
     
     cout << "FINAL ARRAY" << endl;
     for (int i = 0; i < NUM_VALS; i++) {
@@ -306,6 +357,56 @@ int main(int argc, char *argv[])
     } else {
       printf("\nINCORRECT");
     }
+    
+    CALI_MARK_END(main_region);
+    
+    const char* algorithm = "Sample Sort";
+    const char* programmingModel = "CUDA";
+    const char* datatype = "int";
+    const char* inputTypeStr;
+    switch (inputType) {
+      case 1:
+        inputTypeStr = "Sorted";
+        break;
+      case 2:
+        inputTypeStr = "Reverse Sorted";
+        break;
+      case 3:
+        inputTypeStr = "Random";
+        break;
+      case 4:
+        inputTypeStr = "1% Perturbed";
+        break;
+      default:
+        inputTypeStr = "No input type. Invalid input argument entered";
+        break;
+    }
+    
+    adiak::init(NULL);
+    adiak::launchdate();
+    adiak::libraries();
+    adiak::cmdline();   
+    adiak::clustername();  
+    adiak::value("Algorithm", algorithm);
+    adiak::value("ProgrammingModel", programmingModel); // e.g., "MPI", "CUDA", "MPIwithCUDA"
+    adiak::value("Datatype", datatype); // The datatype of input elements (e.g., double, int, float)
+    adiak::value("SizeOfDatatype", 4); // sizeof(datatype) of input elements in bytes (e.g., 1, 2, 4)
+    adiak::value("InputSize", NUM_VALS); // The number of elements in input dataset (1000)
+    adiak::value("InputType", inputTypeStr); // For sorting, this would be "Sorted", "ReverseSorted", "Random", "1%perturbed"
+    adiak::value("num_threads", THREADS); // The number of CUDA or OpenMP threads
+    adiak::value("num_blocks", BLOCKS); // The number of CUDA blocks 
+    adiak::value("group_num", 10); // The number of your group (integer, e.g., 1, 10)
+    adiak::value("implementation_source", "Handwritten");
+  
+    adiak::value("main", main_region);
+    adiak::value("data_init", data_init);
+    adiak::value("comm", comm);
+    adiak::value("comp", comp);
+    adiak::value("comm_large", comm_large);
+    adiak::value("comm_small", comm_small);
+    adiak::value("comp_large", comp_large);
+    adiak::value("comp_small", comp_small);
+    adiak::value("correctness_check", correctness_check);
 
     // Flush Caliper output before finalizing MPI
     mgr.stop();
