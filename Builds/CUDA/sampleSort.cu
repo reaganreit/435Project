@@ -1,283 +1,415 @@
-#include <stdio.h>
-#include <sys/time.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <time.h>
+
+#include <iostream>
+#include <algorithm>
+
+#include <caliper/cali.h>
+#include <caliper/cali-manager.h>
+#include <adiak.hpp>
+
+#include <cuda_runtime.h>
 #include <cuda.h>
-#include<assert.h>
 
-#define N 4194304
-#define per_block 1024
+int THREADS;
+int BLOCKS;
+int NUM_VALS;
 
-__global__ void sample_sort(int *A)  //initial local sorting
-{
-	__shared__ int loc[per_block];
-	int i = blockDim.x * blockIdx.x + threadIdx.x;
- 	int k = threadIdx.x;
- 	loc[k] = A[i];
- 	__syncthreads();
- 	int j;
- 	for(j = 0; j <  per_block/2; j++)
- 	{
- 		if( k%2==0 && k < per_block - 1)
- 		{
- 			if(loc[k] > loc[k + 1])
- 			{
- 				int keep = loc[k];
- 				loc[k] = loc[k + 1];
- 				loc[k + 1] = keep;
- 			}
- 		}
- 		__syncthreads();
+// Cali Regions
+const char* main_region = "main";
+const char* data_init = "data_init";
+const char* comp = "comp";
+const char* comm = "comm";
+const char* comp_small = "comp_small";
+const char* comm_small = "comm_small";
+const char* comp_large = "comp_large";
+const char* comm_large = "comm_large";
+const char* correctness_check = "correctness_check";
 
- 		if( k%2 == 1 && k < per_block - 1)
- 		{
- 			if(loc[k] > loc[k+1])
- 			{
- 				int temp = loc[k];
- 				loc[k] = loc[k + 1];
- 				loc[k + 1] = temp;
- 			}
-		}
- 		__syncthreads();
- 	}
- 	A[i] = loc[threadIdx.x];
+using namespace std;
+
+int correctnessCheck(int *arr, int size) {
+  CALI_MARK_BEGIN(correctness_check);
+  for (int i=0; i<size-1; i++) {
+    if (arr[i+1] < arr[i])
+      return 0;  // means it's not ordered correctly
+  }
+  CALI_MARK_END(correctness_check);
+
+  return 1;
 }
 
-__global__ void final_merge( int *A, int* S)  //final sorting
-{
-
-	int lower_limit = S[blockIdx.x];
-	int upper_limit = S[blockIdx.x + 1]; //taking splitters
-	int k = threadIdx.x;
-	__shared__ int count[1025];
-	count[0] = 0;
-	int i, count_element = 0;
-
-	for(i = 0; i < 4096; i++)
-	{
-		int temp = A[i +4096*k];
-		if(temp >= lower_limit && temp < upper_limit)
-			count_element++;
-	}
-	count[k+1] = count_element;
-	__syncthreads();
-	if(k == 0)
-	{
-		for(i = 2; i < 1025; i++)
-			count[i] = count[i]+count[i-1];
-	}
-	__shared__ int my_block[5000];
-	my_block[4*k] = N+2;
-	my_block[4*k + 1] = N+2;
-	my_block[4*k + 2] = N+2;
-	my_block[4*k + 3] = N+2;
-	__syncthreads();
-	int g = 0;
-	int index = count[k];
-	for(i = 0; i < 4096; i++)
-	{
-		int keep =A[i+4096*k];
-		if(keep>= lower_limit && keep < upper_limit)
-		{
-			my_block[index+g] = keep;
-			g++;
-		}
-	}
-
-	__shared__ int final[5000]; //taking an array size of 5000 in shared memory
-	final[4*k] = N+2;
-	final[4*k + 1] = N+2;
-	final[4*k + 2] = N+2;
-	final[4*k + 3] = N+2;
-	__syncthreads();
-	int fin_count1 = 0, fin_count2 = 0, fin_count3 = 0, fin_count4 = 0;
-	int first = my_block[4*k], second = my_block[4*k +1], third = my_block[4*k +2], forth = my_block[4*k + 3];
-	for(i = 0; i < 4096; i++)
-	{
-		int check = my_block[i];
-		if(first > check)
-			fin_count1++;
-		if(second > check)
-			fin_count2++;
-		if(third > check)
-			fin_count3++;
-		if(forth > check)
-			fin_count4++;
-	}
-
-	final[fin_count1] = first;
-
-	final[fin_count2] = second;
-
-	final[fin_count3] = third;
-	
-	final[fin_count4] = forth;
-	
-
-	__syncthreads();
-
-	if(final[4*k] == N+2)
-	{
-		int d = 4*k - 1;
-		while(final[d]== N+2)
-		{
-			d = d - 1;
-		}
-		final[4*k] = final[d];
-	}
-	if(final[4*k+1] == N + 2)
-	{
-		int d = 4*k;
-		while(final[d]== N+2)
-		{
-			d = d - 1;
-		}
-		final[4*k+1] = final[d];
-	}
-	if(final[4*k + 2] == N+2)
-	{
-		int d = 4*k+1;
-		while(final[d]== N+2)
-		{
-			d = d - 1;
-		}
-		final[4*k+2] = final[d];
-	}
-	if(final[4*k + 3] == N+2)
-	{
-		int d = 4*k+2;
-		while(final[d]== N+2)
-		{
-			d = d - 1;
-		}
-		final[4*k+3] = final[d];
-	}
-	__syncthreads();
+void dataInit(int *arr, int size, int inputType) {
+  CALI_MARK_BEGIN(data_init);
+  int numToSwitch = size / 100;
+  int firstIndex, secondIndex;
+  switch (inputType) {
+    case 1:
+      // sorted
+      for (int i=0; i<size; i++) {
+        arr[i] = i;
+      }
+      break;
+    case 2:
+      // reverse sorted
+      for (int i=0; i<size; i++) {
+        arr[i] = size-i;
+      }
+      break;
+    case 3:
+      // randomized
+      for (int i=0; i<size; i++) {
+        arr[i] = rand() % RAND_MAX;
+      }
+      break;
+    case 4:
+      // 1% perturbed
+      for (int i=0; i<size; i++) {
+        arr[i] = i;
+      }
+      if (numToSwitch == 0)  // at the very least one value should be switched
+        numToSwitch = 1;
+      
+      for (int i=0; i<numToSwitch; i++) {
+        firstIndex = rand() % size;
+        secondIndex = rand() % size;
+        //printf("first index: %d, second index: %d\n", firstIndex, secondIndex);
+        while (firstIndex == secondIndex) {
+          secondIndex = rand() % size;
+        } 
+        std::swap(arr[firstIndex], arr[secondIndex]); 
+      }
+      break;
+    default:
+      printf("THAT'S NOT A VALID INPUT TYPE");
+      break;
+  }
+  
+  CALI_MARK_END(data_init);
 }
 
-
-
-
-
-
-void merge(int *arr, int l, int m, int r) //merge sort
-{
-    	int i, j, k;
-    	int n1 = m - l + 1;
-    	int n2 =  r - m;
- 	int L[n1], R[n2];
-    	for (i = 0; i < n1; i++)
-        		L[i] = arr[l + i];
-    	for (j = 0; j < n2; j++)
-        		R[j] = arr[m + 1+ j];
- 	i = 0; 
-    	j = 0; 
-    	k = l; 
-    	while (i < n1 && j < n2)
-    	{
-        		if (L[i] <= R[j])
-        		{
-            		arr[k] = L[i];
-            		i++;
-        		}
-        		else
-        		{
-            		arr[k] = R[j];
-            		j++;
-        		}
-        		k++;
-    	}
- 	while (i < n1)
-    	{
-        		arr[k] = L[i];
-        		i++;
-        		k++;
-    	}
-    	while (j < n2)
-    	{
-        		arr[k] = R[j];
-        		j++;
-        		k++;
-    	}
-}
- 
-void mergeSort(int *arr, int left, int right)
-{
-    if (left < right)
-    {
-        int middle = left+(right-left)/2;
-        mergeSort(arr, left, middle);
-        mergeSort(arr, middle+1, right);
-        merge(arr, left, middle, right);
+void finalSort(int** buckets, int rows) {
+    for (int r = 0; r < rows; ++r) {
+        for (int i = 0; i < NUM_VALS - 1; ++i) {
+          for (int j = 0; j < NUM_VALS - i - 1; ++j) {
+              if (buckets[r][j] > buckets[r][j + 1]) {
+                  // Swap elements if they are in the wrong order
+                  int temp = buckets[r][j];
+                  buckets[r][j] = buckets[r][j + 1];
+                  buckets[r][j + 1] = temp;
+              }
+          }
+        }
     }
 }
 
+void chooseSplitters(int *splitters, int *samples) {
+    // sort samples
+    int samplesSize = BLOCKS * (BLOCKS-1);
+    for (int i = 0; i < samplesSize - 1; ++i) {
+      for (int j = 0; j < samplesSize - i - 1; ++j) {
+          if (samples[j] > samples[j + 1]) {
+              // Swap elements if they are in the wrong order
+              int temp = samples[j];
+              samples[j] = samples[j + 1];
+              samples[j + 1] = temp;
+          }
+      }
+    }
+    
+    // choose splitters
+    int spacing = std::ceil((float)samplesSize/(float)BLOCKS);
+    int splitterIndex = spacing-1;
+    
+    for (int i = 0; i < BLOCKS-1; i++) {
+      splitters[i] = samples[splitterIndex];
+      splitterIndex += spacing;
+    }
+}
+
+
+__global__ void chooseSamples(int* data, int *samples, int numBlocks) {
+    int index = blockDim.x * blockIdx.x + threadIdx.x;
+    
+    // only smallest thread sorts block
+    if (threadIdx.x == 0) {
+      // sort each block
+      for (int i = 0; i < blockDim.x - 1; ++i) {
+        for (int j = 0; j < blockDim.x - i - 1; ++j) {
+            if (data[index + j] > data[index + j + 1]) {
+                // Swap elements if they are in the wrong order
+                int temp = data[index + j];
+                data[index + j] = data[index + j + 1];
+                data[index + j + 1] = temp;
+            }
+        }
+      }
+      
+      // choose samples from sorted block
+      int spacing = blockDim.x /(numBlocks-1);
+      int sampleIndex = spacing-1;
+      
+      for (int i = 0; i < numBlocks-1; i++) {
+        samples[blockIdx.x * (numBlocks-1) + i] = data[index+sampleIndex];
+        sampleIndex += spacing;
+      }
+    }
+
+    
+}
+
+__global__ void sampleSort(int* data, int** buckets, int* splitters, int* flattenedArr, int numSplitters, int numVals) {
+    
+    int index = blockDim.x * blockIdx.x + threadIdx.x;
+       
+    // each thread checks which bucket they fall into
+    int j = 0;
+    while(j < numSplitters) {  // j being which bucket it should belong to
+  			if (j == numSplitters-1) {
+          // means it should go in last bucket
+          // makes sure that we don't try to access splitters[buckets.size()-1]. will go out of range
+          buckets[j][index] = data[index];
+          break;
+        }
+        if(data[index] < splitters[j]) {
+  				buckets[j][index] = data[index];
+          break;
+  			}
+  			j++;
+    }
+    
+    // store bucket values in flattened array
+    int arrIndex = 0;
+    for (int i = 0; i < numSplitters; ++i) {
+        for (int j = 0; j < numVals; ++j) {
+            flattenedArr[arrIndex++] = buckets[i][j];
+        }
+    }
+}
 
 int main(int argc, char *argv[])
 {
-    if (argc == 2)
-    {
-        numValues = atoi(argv[1]);
-    }
-    else
-    {
-        printf("\n Please provide the size of the array");
-        return 0;
-    }
-	struct timeval start_serial,end_serial, start_cuda, end_cuda;
-	int* h_A = (int*) malloc (N*sizeof(int));
-	int* m_A = (int*) malloc (N*sizeof(int));
-	int* h_S = (int*) malloc (8192*sizeof(int));
-	int i, z = 0;
-	srand(time(NULL));
-	for(i=0; i < N; i++)
-	{
-		int random = rand()%N+1;
-		h_A[i] = random;
-		m_A[i] = random;
-		if(i%512 == 0)
-		{
-			h_S[z] = random;
-			z=z+1;
-		}
-	}
-	gettimeofday(&start_serial,NULL);
-	mergeSort(m_A, 0, 2097152);
-	gettimeofday(&end_serial,NULL);
-	size_t size = N*sizeof(int);
-	int *d_A, *d_S;
-	cudaMalloc(&d_A, size);
-	cudaMemcpy(d_A, h_A, size, cudaMemcpyHostToDevice);
-	cudaMalloc(&d_S, 2049*sizeof(int));
-	dim3 threads_per_block(1024);
-	dim3 num_of_blocks(N/1024);
-	gettimeofday(&start_cuda,NULL);
-	sample_sort<<<num_of_blocks, threads_per_block>>>(d_A); // initial local sort kernel
+    int inputType;
+    inputType = atoi(argv[3]);
+    THREADS = atoi(argv[1]);
+    NUM_VALS = atoi(argv[2]);
+    BLOCKS = NUM_VALS / THREADS;
 
-	mergeSort(h_S, 0, 8191);
-	int *h_F = (int*) malloc (2049* sizeof(int));
-	h_F[0] = 0;
-	h_F[2048] = N+1;
-	int c, m =1;
-	for(c = 1; c < 8192; c++)
-	{
-		if(c%4 == 0)
-		{
-			h_F[m] = h_S[c];
-			m = m+1; 
-		}
-	}
-	dim3 new_threads_per_block(1024);
-	dim3 new_num_blocks(2048);
-	cudaMemcpy(d_S, h_F, 2049*sizeof(int), cudaMemcpyHostToDevice);
-	cudaDeviceSynchronize();
-	final_merge<<<new_num_blocks, new_threads_per_block>>>(d_A, d_S); //final local sort kernel sending the splitters too
-	cudaDeviceSynchronize();
-	gettimeofday(&end_cuda,NULL);
-	cudaMemcpy(h_A, d_A, size, cudaMemcpyDeviceToHost);
-	cudaFree(d_A);
-	cudaFree(d_S);
-	printf("\nTime taken for calculation is %ld microseconds \n",(end_serial.tv_sec - start_serial.tv_sec)*1000000 + (end_serial.tv_usec - start_serial.tv_usec));
-	printf("\nTime taken for calculation is %ld microseconds \n",(end_cuda.tv_sec - start_cuda.tv_sec)*1000000 + (end_cuda.tv_usec - start_cuda.tv_usec)); //time calculations
-	return 0;
+    printf("Number of threads: %d\n", THREADS);
+    printf("Number of values: %d\n", NUM_VALS);
+    printf("Number of blocks: %d\n", BLOCKS);
+    printf("Input type: %d\n", inputType);
 
-}
+    // Create caliper ConfigManager object
+    cali::ConfigManager mgr;
+    mgr.start();
+    
+    CALI_MARK_BEGIN(main_region);
+
+    // host data
+    int* hostData = new int[NUM_VALS];
+    int *splitters = new int[BLOCKS-1]; 
+    int *samples = (int*)malloc(sizeof(int) * (BLOCKS-1)*BLOCKS);  // each block picks out potential splitter candidates
+    
+    // initialize data according to inputType
+    dataInit(hostData, NUM_VALS, inputType);
+    
+    cout << "original arr" << endl;  
+    for (int i = 0; i < NUM_VALS; ++i) {
+        cout << hostData[i] << " ";
+    }
+    cout << endl;  
+
+    // device data
+    int* devData, *dsplitters, *dsamples;
+    cudaMalloc((void**)&devData, NUM_VALS * sizeof(int));
+    cudaMalloc((void**)&dsplitters, (BLOCKS-1) * sizeof(int));
+    cudaMalloc((void**)&dsamples, (BLOCKS-1)*BLOCKS * sizeof(int));
+    cout << "device data" << endl;
+    
+    // send chunks to device
+    CALI_MARK_BEGIN(comm);
+    CALI_MARK_BEGIN(comm_large);
+    cudaMemcpy(devData, hostData, NUM_VALS * sizeof(int), cudaMemcpyHostToDevice);
+    CALI_MARK_END(comm_large);
+    CALI_MARK_END(comm);
+    cout << "send chunks" << endl;
+    
+    // have device sort and send back samples
+    CALI_MARK_BEGIN(comp);
+    CALI_MARK_BEGIN(comp_large);
+    chooseSamples<<<BLOCKS, THREADS>>>(devData, dsamples, BLOCKS);
+    CALI_MARK_END(comp_large);
+    CALI_MARK_END(comp);
+    cout << "choose samples" << endl;
+    
+    // receive samples from device
+    CALI_MARK_BEGIN(comm);
+    CALI_MARK_BEGIN(comm_small);
+    cudaMemcpy(samples, dsamples, (BLOCKS-1) * BLOCKS * sizeof(int), cudaMemcpyDeviceToHost);
+    CALI_MARK_END(comm_small);
+    CALI_MARK_END(comm);
+    cout << "receive samples" << endl;
+    
+    // sort samples and choose splitters
+    CALI_MARK_BEGIN(comp);
+    CALI_MARK_BEGIN(comp_small);
+    chooseSplitters(splitters, samples);
+    CALI_MARK_END(comp_small);
+    CALI_MARK_END(comp);
+    cout << "choose splitters" << endl;
+    
+    // allocate memory for host and device 2d bucket arrays
+    int rows = BLOCKS-1;
+    int** buckets = new int*[rows];
+    int** dbuckets;
+    int* dflattenedArr;
+    cudaMalloc((void**)&dflattenedArr, rows * NUM_VALS * sizeof(int));
+    for (int i = 0; i < rows; ++i) {
+        buckets[i] = new int[NUM_VALS];
+    }
+    
+    // initalize buckets with -1 so we know what to remove later
+    for (int i = 0; i < rows; i++) {
+      for (int j = 0; j < NUM_VALS; j++) {
+        buckets[i][j] = -1;
+      }
+    }
+    
+    // Allocate device memory for the 2D array
+    CALI_MARK_BEGIN(comm);
+    CALI_MARK_BEGIN(comm_large);
+    cudaMalloc((void**)&dbuckets, rows * sizeof(int*));
+    for (int i = 0; i < rows; ++i) {
+        int* d_row;
+        cudaMalloc((void**)&d_row, NUM_VALS * sizeof(int));
+        cudaMemcpy(d_row, buckets[i], NUM_VALS * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(dbuckets + i, &d_row, sizeof(int*), cudaMemcpyHostToDevice);
+    }
+    CALI_MARK_END(comm_large);
+    CALI_MARK_END(comm);
+    
+    // send chunks to device w/ splitters
+    CALI_MARK_BEGIN(comm);
+    CALI_MARK_BEGIN(comm_small);
+    cudaMemcpy(dsplitters, splitters, sizeof(int) * (BLOCKS-1), cudaMemcpyHostToDevice);
+    CALI_MARK_END(comm_small);
+    CALI_MARK_END(comm);
+    cout << "send chunks" << endl;
+    
+    CALI_MARK_BEGIN(comp);
+    CALI_MARK_BEGIN(comp_large);
+    sampleSort<<<BLOCKS, THREADS>>>(devData, dbuckets, dsplitters, dflattenedArr, BLOCKS-1, NUM_VALS);
+    CALI_MARK_END(comp_large);
+    CALI_MARK_END(comp);
+    cout << "sample sort" << endl;
+    
+    int *flattenedArr = (int*)malloc(sizeof(int) * (BLOCKS-1)*NUM_VALS);
+    CALI_MARK_BEGIN(comm);
+    CALI_MARK_BEGIN(comm_large);
+    cudaMemcpy(flattenedArr, dflattenedArr, (BLOCKS-1) * NUM_VALS * sizeof(int), cudaMemcpyDeviceToHost);
+    CALI_MARK_END(comm_large);
+    CALI_MARK_END(comm);
+    
+    
+    // initializing unflattened arr
+    int** unflattened = new int*[rows];
+    for (int i = 0; i < rows; ++i) {
+        unflattened[i] = new int[NUM_VALS];
+    }
+    
+    // unflatten the arr
+    int index = 0;
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < NUM_VALS; ++j) {
+            unflattened[i][j] = flattenedArr[index++];
+        }
+    }
+    
+    // final sort each row
+    CALI_MARK_BEGIN(comp);
+    CALI_MARK_BEGIN(comp_large);
+    finalSort(unflattened, rows);
+    cout << "final sort" << endl;
+    
+    // append to one array and done!
+    int* finalArr = new int[NUM_VALS];
+    int finalArrIndex = 0;
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < NUM_VALS; ++j) {
+            if (unflattened[i][j] != -1) {
+              finalArr[finalArrIndex++] = unflattened[i][j];
+            }
+        }
+        
+    }
+    CALI_MARK_END(comp_large);
+    CALI_MARK_END(comp);
+    
+    cout << "FINAL ARRAY" << endl;
+    for (int i = 0; i < NUM_VALS; i++) {
+      cout << finalArr[i] << " ";
+    }
+    
+    if (correctnessCheck(finalArr, NUM_VALS)) {
+      printf("\nCORRECT");
+    } else {
+      printf("\nINCORRECT");
+    }
+    
+    CALI_MARK_END(main_region);
+    
+    const char* algorithm = "Sample Sort";
+    const char* programmingModel = "CUDA";
+    const char* datatype = "int";
+    const char* inputTypeStr;
+    switch (inputType) {
+      case 1:
+        inputTypeStr = "Sorted";
+        break;
+      case 2:
+        inputTypeStr = "Reverse Sorted";
+        break;
+      case 3:
+        inputTypeStr = "Random";
+        break;
+      case 4:
+        inputTypeStr = "1% Perturbed";
+        break;
+      default:
+        inputTypeStr = "No input type. Invalid input argument entered";
+        break;
+    }
+    
+    adiak::init(NULL);
+    adiak::launchdate();
+    adiak::libraries();
+    adiak::cmdline();   
+    adiak::clustername();  
+    adiak::value("Algorithm", algorithm);
+    adiak::value("ProgrammingModel", programmingModel); // e.g., "MPI", "CUDA", "MPIwithCUDA"
+    adiak::value("Datatype", datatype); // The datatype of input elements (e.g., double, int, float)
+    adiak::value("SizeOfDatatype", 4); // sizeof(datatype) of input elements in bytes (e.g., 1, 2, 4)
+    adiak::value("InputSize", NUM_VALS); // The number of elements in input dataset (1000)
+    adiak::value("InputType", inputTypeStr); // For sorting, this would be "Sorted", "ReverseSorted", "Random", "1%perturbed"
+    adiak::value("num_threads", THREADS); // The number of CUDA or OpenMP threads
+    adiak::value("num_blocks", BLOCKS); // The number of CUDA blocks 
+    adiak::value("group_num", 10); // The number of your group (integer, e.g., 1, 10)
+    adiak::value("implementation_source", "Handwritten");
+  
+    adiak::value("main", main_region);
+    adiak::value("data_init", data_init);
+    adiak::value("comm", comm);
+    adiak::value("comp", comp);
+    adiak::value("comm_large", comm_large);
+    adiak::value("comm_small", comm_small);
+    adiak::value("comp_large", comp_large);
+    adiak::value("comp_small", comp_small);
+    adiak::value("correctness_check", correctness_check);
+
+    // Flush Caliper output before finalizing MPI
+    mgr.stop();
+    mgr.flush();
+};
+
