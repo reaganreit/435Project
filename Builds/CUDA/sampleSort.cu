@@ -107,22 +107,15 @@ void finalSort(int** buckets, int rows) {
 void chooseSplitters(int *splitters, int *samples) {
     // sort samples
     int samplesSize = BLOCKS * (BLOCKS-1);
-    for (int i = 0; i < samplesSize - 1; ++i) {
-      for (int j = 0; j < samplesSize - i - 1; ++j) {
-          if (samples[j] > samples[j + 1]) {
-              // Swap elements if they are in the wrong order
-              int temp = samples[j];
-              samples[j] = samples[j + 1];
-              samples[j + 1] = temp;
-          }
-      }
-    }
+    std::sort(samples, samples + samplesSize);
     
     // choose splitters
     int spacing = std::ceil((float)samplesSize/(float)BLOCKS);
     int splitterIndex = spacing-1;
     
     for (int i = 0; i < BLOCKS-1; i++) {
+      if (splitterIndex > samplesSize-1)
+        break;      
       splitters[i] = samples[splitterIndex];
       splitterIndex += spacing;
     }
@@ -215,11 +208,13 @@ int main(int argc, char *argv[])
     // initialize data according to inputType
     dataInit(hostData, NUM_VALS, inputType);
     
+    /*
     cout << "original arr" << endl;  
     for (int i = 0; i < NUM_VALS; ++i) {
         cout << hostData[i] << " ";
     }
     cout << endl;  
+    */
 
     // device data
     int* devData, *dsplitters, *dsamples;
@@ -412,4 +407,3 @@ int main(int argc, char *argv[])
     mgr.stop();
     mgr.flush();
 };
-
