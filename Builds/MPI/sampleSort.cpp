@@ -238,7 +238,6 @@ int main(int argc, char *argv[]) {
     {
          int buckets[numWorkers][avgVals+1];
          MPI_Recv(&buckets, numWorkers*(avgVals+1), MPI_INT, source, mtype, MPI_COMM_WORLD, &status);
-         printf("Received results from task %d\n",source);
          for (int i=0; i<numWorkers; i++) {
            for (int j=0; j<avgVals+1; j++) {
              if (buckets[i][j] != -1)
@@ -321,8 +320,10 @@ int main(int argc, char *argv[]) {
     CALI_MARK_BEGIN(comp);
     CALI_MARK_BEGIN(comp_small);
     for (int i=0; i<numWorkers-1; i++) {
+      if (index > arr.size()-1)
+        break;
       chosenSamples[i] = arr[index];
-      //printf("index: %d\n", index);
+      // printf("Index: %d, Chosen Sample: %d\n", index, chosenSamples[i]);
       index += spacing;
     }
     CALI_MARK_END(comp_small);
@@ -346,7 +347,6 @@ int main(int argc, char *argv[]) {
     MPI_Recv(&mainArr, numValues, MPI_INT, MASTER, mtype, MPI_COMM_WORLD, &status);
     CALI_MARK_END(comm_small);
     CALI_MARK_END(comm);
-    printf("task %d received splitters\n", taskid);
     
     /*
     printf("splitters\n");
