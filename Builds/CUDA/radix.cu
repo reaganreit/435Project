@@ -28,6 +28,10 @@ const char* comp_large = "comp_large";
 const char* comm_large = "comm_large";
 const char* correctness_check = "correctness_check";
 const char* cuda_memcpy = "cudaMemcpy";
+const char* comp_small = "comp_small";
+const char* comm_small = "comm_small";
+
+const char* inputType= "Random";
 
 const char* inputType= "Random";
 
@@ -307,6 +311,8 @@ void radixSort(int * array, int size, int BLOCKSIZE, int THREADSIZE){
     CALI_MARK_END(comp);
 
     CALI_MARK_BEGIN(comm);
+    CALI_MARK_BEGIN(comm_small);
+   CALI_MARK_END(comm_small);
     CALI_MARK_BEGIN(comm_large);
     CALI_MARK_BEGIN(cuda_memcpy);
     cudaMemcpy(inputArray, array, sizeof(int)*size, cudaMemcpyHostToDevice);
@@ -337,6 +343,8 @@ void radixSort(int * array, int size, int BLOCKSIZE, int THREADSIZE){
         CALI_MARK_END(comm);
 
         CALI_MARK_BEGIN(comp);
+        CALI_MARK_BEGIN(comp_small);
+        CALI_MARK_END(comp_small);
         CALI_MARK_BEGIN(comp_large);
         histogramKernel<<<blockCount, THREADSIZE, 3 * THREADSIZE * sizeof(int)>>>(inputArray, blockBucketArray, radixArray, size, significantDigit, THREADSIZE);  
         CALI_MARK_END(comp_large);
