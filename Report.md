@@ -1017,8 +1017,9 @@ They will show up in the `Thicket.metadata` if the caliper file is read into Thi
 **See the `Builds/` directory to find the correct Caliper configurations to get the above metrics for CUDA, MPI, or OpenMP programs.** They will show up in the `Thicket.dataframe` when the Caliper file is read into Thicket.
 
 ## 4. Performance evaluation
-We could not figure out how to paste images in the mark down file. For now we will submit our graphs and performance evaluation in the canvas submission folder.
 
+Include detailed analysis of computation performance, communication performance. 
+Include figures and explanation of your analysis.
 
 ### 4a. Vary the following parameters
 For inputSizes:
@@ -1072,4 +1073,3 @@ Submit a zip named `TeamX.zip` where `X` is your team number. The zip should con
 - Data: All `.cali` files used to generate the plots seperated by algorithm/implementation.
 - Jupyter notebook: The Jupyter notebook(s) used to generate the plots for the report.
 - Report.md
-

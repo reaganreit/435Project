@@ -30,8 +30,6 @@ const char* main_region = "main";
 const char* data_init = "data_init";
 const char* comp = "comp";
 const char* comm = "comm";
-//const char* comp_small = "comp_small";
-//const char* comm_small = "comm_small";
 const char* comp_large = "comp_large";
 const char* comm_large = "comm_large";
 const char* correctness_check = "correctness_check";
@@ -40,6 +38,8 @@ const char* Barrier = "MPI_Barrier";
 
 //timers
 double data_init_start, data_init_end, comp_small_start, comp_small_end, comm_small_start, comm_small_end, comm_large_start, comm_large_end, comp_large_start, comp_large_end, correctness_check_start, correctness_check_end; 
+
+const char* inputType= "Random";
 
 
 enum OrderCodes {
@@ -57,10 +57,83 @@ enum Tags {
 };
 
 
-void test_data(vector<unsigned int> *arr, int id, int size) {
+/*void test_data(vector<unsigned int> *arr, int id, int size) {
 	srand(time(NULL) * (id + 1));
 	for(unsigned int i = 0; i < arr->size(); ++i)
 		(*arr)[i] = rand() % 1000;
+}*/
+
+void dataInit(vector<unsigned int> *arr, int size, int inputTypeInt) {
+  int numToSwitch = size / 100;
+  int firstIndex, secondIndex;
+  switch (inputTypeInt) {
+    case 1:
+      // sorted
+      inputType= "Sorted";
+      cout<<"sorted"<<endl;
+      for (int i=0; i<size; i++) {
+        (*arr)[i] = i;
+      }
+      break;
+    case 2:
+      // reverse sorted
+      inputType= "ReverseSorted";
+      cout<<"reverse"<<endl;
+      for (int i=0; i<size; i++) {
+        (*arr)[i] = size-i;
+      }
+      break;
+    case 3:
+      // randomized
+      inputType= "Random";
+      //cout<<"size "<<size<<endl;
+      for (int i=0; i<size; i++) {
+        (*arr)[i] = rand() % RAND_MAX;
+      }
+      break;
+    case 4:
+    {
+      // 1% perturbed
+      inputType= "1%perturbed";
+      cout<<"weird"<<endl;
+      for (int i=0; i<size; i++) {
+        (*arr)[i] = i;
+      }
+      if (numToSwitch == 0)  // at the very least one value should be switched
+        numToSwitch = 1;
+      
+      printf("num to switch: %d\n", numToSwitch);
+      for (int i=0; i<numToSwitch; i++) {
+        firstIndex = rand() % size;
+        secondIndex = rand() % size;
+        printf("first index: %d, second index: %d\n", firstIndex, secondIndex);
+        while (firstIndex == secondIndex) {
+          secondIndex = rand() % size;
+        } 
+        std::swap(arr[firstIndex], arr[secondIndex]); 
+      }
+      //std::srand(std::time(0));
+
+    // Number of elements to perturb (1% of the array size)
+     /* int numToPerturb = size / 100;
+
+    // Ensure at least one element is perturbed
+      if (numToPerturb == 0) {
+        numToPerturb = 1;
+      }
+
+      for (int i = 0; i < numToPerturb; ++i) {
+        // Randomly select two indices
+        int index1 = rand() % size;
+        int index2 = rand() % size;
+        std::swap((*arr)[index1], (*arr)[index2]);
+      }*/
+      break;
+    }
+    default:
+      printf("THAT'S NOT A VALID INPUT TYPE");
+      break;
+  }
 }
 
 // count number of bits set to 1 in a number
@@ -233,7 +306,7 @@ void radix_mpi(vector<unsigned int> *&arr, const unsigned int id, const unsigned
 	}
 }
 
-int check_array_order(vector<unsigned int> *&arr, unsigned int id, unsigned int size) {
+/*int check_array_order(vector<unsigned int> *&arr, unsigned int id, unsigned int size) {
 
 	// check local array order
 	for(unsigned int i = 1; i < arr->size(); ++i)
@@ -272,33 +345,54 @@ int check_array_order(vector<unsigned int> *&arr, unsigned int id, unsigned int 
 	}
 
 	return ORDER_ONLY_MASTER;
+}*/
+int check_array_order(vector<unsigned int> *arr, int size) {
+  //CALI_MARK_BEGIN(correctness_check);
+  // for (int i=0; i<size-1; i++) {
+  //   if ((*arr)[i+1] < (*arr)[i])
+  //     return 0;  // means it's not ordered correctly
+  // }
+ // CALI_MARK_END(correctness_check);
+ for(unsigned int i = 2; i < arr->size(); ++i)
+		if ((*arr)[i - 1] > (*arr)[i])
+			return i;
+
+  return 0;
 }
 
 #define MSG_SIZE 100
 
-int main(int argc, char **argv) {
+int main(int argc, char *argv[]) {
 	CALI_MARK_BEGIN(main_region);
-	int g = 4;
+	int g = 2;
+  int inputTypeInt = 0;
 
 	char msg[MSG_SIZE];
 	int id, size;
-	MPI_Init(&argc, &argv);
-	MPI_Comm_rank(MPI_COMM_WORLD, &id);
-	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
 	cali::ConfigManager mgr;
     mgr.start();
 
 	int len;
 	stringstream ss;
+  // printf("num args: %d \n", argc);
+   //printf("arg 1: %s \n", (argv[0]));
+   //printf("arg 2: %s \n", (argv[1]));
+   //printf("arg 3: %s \n", (argv[2]));
+   
+ MPI_Init(&argc, &argv);
+	MPI_Comm_rank(MPI_COMM_WORLD, &id);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-	if (argc > 1){
-  	len = atoi(argv[1]);
-     g= size;
+	if (argc ==3){
+  	 len = atoi(argv[1]);
+     inputTypeInt = atoi(argv[2]);
    }
 	else			len = LEN;
 
-	if (argc > 2)	g = atoi(argv[2]);
+	//if (argc > 2)	g = atoi(argv[2]);
+ 
+
 
 	if (id == 0) cerr << "mask size = " << g << endl << endl;
  
@@ -306,9 +400,15 @@ int main(int argc, char **argv) {
   CALI_MARK_BEGIN(data_init);
 	vector<unsigned int> *arr = new vector<unsigned int>(len / size);
 	// generate test data
-   test_data(arr, id, (len/size)); 
+   //test_data(arr, id, (len/size)); 
+  //cout<<"len "<<len<<endl;
+ // cout<<"size "<<size<<endl;
+  //cout<<"(len/size) "<<(len/size)<<endl;
+  
+   dataInit(arr, (len/size),inputTypeInt);
    CALI_MARK_END(data_init);
    data_init_end = MPI_Wtime();
+  // cout << "(*arr)[0]" <<(*arr)[0]<<endl;
 
 	// the real stuff
 	if (id == 0) cerr << "starting radix sort...";
@@ -318,7 +418,11 @@ int main(int argc, char **argv) {
  CALI_MARK_END(Barrier);
    CALI_MARK_END(comm);
 //	timer.start();
+  //cerr << "g = " << g << endl;//g=2; 
+ // g=8;     
+  //cerr << "arr.size before = " << arr->size() << endl << endl; 
 	radix_mpi(arr, id, size, g);
+  //cerr << "arr.size after = " << arr->size() << endl << endl;
 //	timer.stop();
   CALI_MARK_BEGIN(comm);
   CALI_MARK_BEGIN(Barrier);
@@ -336,7 +440,9 @@ int main(int argc, char **argv) {
 	// check array order
   correctness_check_start = MPI_Wtime();
   CALI_MARK_BEGIN(correctness_check);
-	int order = check_array_order(arr, id, size);
+   //cerr << "size = " << size << endl ;
+   //cerr << "arr.size = " << arr->size() << endl << endl;
+	int order = check_array_order(arr, size);
   CALI_MARK_END(correctness_check);
   correctness_check_end = MPI_Wtime();
   
@@ -352,6 +458,7 @@ int main(int argc, char **argv) {
  if (id == 0) {
    cout << "\n";
     cout << "Sorted Array: ";
+    // cout<<"arr->size() "<<arr->size()<<endl;
     for (unsigned int i = 0; i < arr->size(); ++i) {
         cout << (*arr)[i] << " ";
     }
@@ -362,8 +469,7 @@ int main(int argc, char **argv) {
   const char* programmingModel = "MPI"; 
   const char* datatype = "int"; 
   int sizeOfDatatype =4;
-  int inputSize =1000; 
-  const char* inputType= "Random";
+  int inputSize =len; 
   int num_procs = size; 
   int group_number =10;
   const char* implementation_source = "Online"; 

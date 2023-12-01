@@ -28,6 +28,69 @@ const char* comp_large = "comp_large";
 const char* comm_large = "comm_large";
 const char* correctness_check = "correctness_check";
 const char* cuda_memcpy = "cudaMemcpy";
+const char* comp_small = "comp_small";
+const char* comm_small = "comm_small";
+
+const char* inputType= "Random";
+
+const char* inputType= "Random";
+
+void dataInit(int *arr, int size, int inputTypeInt) {
+  CALI_MARK_BEGIN(data_init);
+  int numToSwitch = size / 100;
+  int firstIndex, secondIndex;
+  switch (inputTypeInt) {
+    case 1:
+      // sorted
+      inputType= "Sorted";
+      std::cout<<"Sorted"<<std::endl;
+      for (int i=0; i<size; i++) {
+        arr[i] = i;
+      }
+      break;
+    case 2:
+      // reverse sorted
+      inputType= "ReverseSorted";
+      std::cout<<"ReverseSorted"<<std::endl;
+      for (int i=0; i<size; i++) {
+        arr[i] = size-i;
+      }
+      break;
+    case 3:
+      // randomized
+      inputType= "Random";
+      std::cout<<"Random"<<std::endl;
+      for (int i=0; i<size; i++) {
+        arr[i] = rand() % RAND_MAX;
+      }
+      break;
+    case 4:
+      // 1% perturbed
+      inputType= "1%perturbed";
+      std::cout<<"perturbed"<<std::endl;
+      for (int i=0; i<size; i++) {
+        arr[i] = i;
+      }
+      if (numToSwitch == 0)  // at the very least one value should be switched
+        numToSwitch = 1;
+      
+      for (int i=0; i<numToSwitch; i++) {
+        firstIndex = rand() % size;
+        secondIndex = rand() % size;
+        //printf("first index: %d, second index: %d\n", firstIndex, secondIndex);
+        while (firstIndex == secondIndex) {
+          secondIndex = rand() % size;
+        } 
+        std::swap(arr[firstIndex], arr[secondIndex]); 
+      }
+      break;
+    default:
+      printf("THAT'S NOT A VALID INPUT TYPE");
+      break;
+  }
+  
+  CALI_MARK_END(data_init);
+}
 
 int correctnessCheck(int arr[], int size) {
   CALI_MARK_BEGIN(correctness_check);
@@ -49,14 +112,22 @@ __global__ void copyKernel(int * inArray, int * semiSortArray, int arrayLength){
     }
 }
 
-__global__ void histogramKernel(int * inArray, int * outArray, int * radixArray, int arrayLength, int significantDigit){
-    extern __shared__ int sharedData[]; 
+
+__global__ void histogramKernel(int * inArray, int * outArray, int * radixArray, int arrayLength, int significantDigit, int THREADSIZE){
+  //extern __shared__ int sharedData[]; 
+  // printf("blockDim.x %d",blockDim.x);
+
+  // int* inArrayShared = sharedData;
+  // int* radixArrayShared = inArrayShared + blockDim.x;
+  // __shared__ int inArrayShared[THREADSIZE];
+  //__shared__ int outArrayShared[RADIX];
+  // __shared__ int radixArrayShared[THREADSIZE];
+    
+    extern __shared__ int sharedData[];
 
     int* inArrayShared = sharedData;
-    int* radixArrayShared = inArrayShared + blockDim.x;
-    //__shared__ int inArrayShared[THREADSIZE];
-    __shared__ int outArrayShared[RADIX];
-    //__shared__ int radixArrayShared[THREADSIZE];
+    int* radixArrayShared = inArrayShared + THREADSIZE;
+    int* outArrayShared = radixArrayShared + THREADSIZE;
 
     int index   = blockIdx.x * blockDim.x + threadIdx.x;
     int thread  = threadIdx.x;
@@ -207,7 +278,7 @@ void cudaScanThrust(int* inarray, int arr_length, int* resultarray) {
         thrust::device_free(d_output);
 }
 
-void radixSort(int * array, int size, int BLOCKSIZE){
+void radixSort(int * array, int size, int BLOCKSIZE, int THREADSIZE){
 
     int significantDigit    = 1;
 
@@ -240,6 +311,8 @@ void radixSort(int * array, int size, int BLOCKSIZE){
     CALI_MARK_END(comp);
 
     CALI_MARK_BEGIN(comm);
+    CALI_MARK_BEGIN(comm_small);
+   CALI_MARK_END(comm_small);
     CALI_MARK_BEGIN(comm_large);
     CALI_MARK_BEGIN(cuda_memcpy);
     cudaMemcpy(inputArray, array, sizeof(int)*size, cudaMemcpyHostToDevice);
@@ -270,8 +343,10 @@ void radixSort(int * array, int size, int BLOCKSIZE){
         CALI_MARK_END(comm);
 
         CALI_MARK_BEGIN(comp);
+        CALI_MARK_BEGIN(comp_small);
+        CALI_MARK_END(comp_small);
         CALI_MARK_BEGIN(comp_large);
-        histogramKernel<<<blockCount, threadCount>>>(inputArray, blockBucketArray, radixArray, size, significantDigit);  
+        histogramKernel<<<blockCount, THREADSIZE, 3 * THREADSIZE * sizeof(int)>>>(inputArray, blockBucketArray, radixArray, size, significantDigit, THREADSIZE);  
         CALI_MARK_END(comp_large);
         CALI_MARK_END(comp);   
         cudaThreadSynchronize();
@@ -341,8 +416,12 @@ int main(int argc, char **argv){
     CALI_MARK_BEGIN(main_region);
 
     THREADSIZE = atoi(argv[1]);
+    std::cout<<"threads "<<THREADSIZE<<std::endl;
     SIZE = atoi(argv[2]);
+    int inputTypeInt = atoi(argv[3]);
+    std::cout<<"input type "<<inputTypeInt<<std::endl;
     BLOCKSIZE = ((SIZE-1)/THREADSIZE + 1); //SIZE / THREADSIZE;
+    std::cout<<"blocks "<<BLOCKSIZE<<std::endl;
     int size = SIZE;
     int* array;
     int list[size];
@@ -350,27 +429,30 @@ int main(int argc, char **argv){
     cali::ConfigManager mgr;
     mgr.start();
 
-    CALI_MARK_BEGIN(data_init);
+   /* CALI_MARK_BEGIN(data_init);
     srand(time(NULL));
     //srand(time(NULL) * (id + 1));
 
     /*for(int i =0; i < size; i++){    //this is decreasing for later
         list[i]     = SIZE -i;
-    }*/ 
+    } 
     
     for(int i =0; i < size; i++){    
         list[i]     = rand() % 1000;
     }
-    CALI_MARK_END(data_init);
+    CALI_MARK_END(data_init); */
+    
+    dataInit(list, size, inputTypeInt);
+    
 
     array = &list[0];
     printf("\nUnsorted List: ");
-    printArray(array, size);
+   // printArray(array, size);
 
-    radixSort(array, size, BLOCKSIZE);
+    radixSort(array, size, BLOCKSIZE, THREADSIZE);
 
     printf("\nSorted List:");
-    printArray(array, size);
+   // printArray(array, size);
 
     if (correctnessCheck(array, size))
     {
@@ -381,7 +463,6 @@ int main(int argc, char **argv){
 
     printf("\n");
 
-    return 0;
 
     CALI_MARK_END(main_region);
 
@@ -389,13 +470,13 @@ int main(int argc, char **argv){
     const char* programmingModel = "CUDA"; 
     const char* datatype = "int"; 
     int sizeOfDatatype =4;
-    int inputSize =1000; 
-    const char* inputType= "Random";
-    int num_threads = size; 
+    int inputSize =SIZE; 
+    int num_threads = THREADSIZE; 
     int num_blocks = BLOCKSIZE;
     int group_number =10;
     const char* implementation_source = "Online";
 
+  
     adiak::init(NULL);
     adiak::launchdate();    // launch date of the job
     adiak::libraries();     // Libraries used
@@ -423,4 +504,5 @@ int main(int argc, char **argv){
 
     mgr.stop();
     mgr.flush();
+    return 0;
 }
