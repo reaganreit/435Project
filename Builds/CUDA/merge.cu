@@ -18,6 +18,10 @@ const char* commLarge = "comm_large";
 const char* comp = "comp";
 const char* compLarge = "comp_large";
 
+int numThreads;
+int numBlocks;
+int SIZE;
+
 void data_initialization(int arr[], int size, int inputType) {
     
     int numToSwitch = size / 100;
@@ -48,11 +52,12 @@ void data_initialization(int arr[], int size, int inputType) {
             for (int i=0; i<size; i++) {
                 arr[i] = i;
             }
+            
             if (numToSwitch == 0) {  // at the very least one value should be switched
                 numToSwitch = 1;
             }
             
-            for (int i=0; i<numToSwitch; i++) {
+            for (int i = 0; i < numToSwitch; ++i) {
                 firstIndex = rand() % size;
                 secondIndex = rand() % size;
                 while (firstIndex == secondIndex) {
@@ -60,50 +65,89 @@ void data_initialization(int arr[], int size, int inputType) {
                 } 
                 swap(arr[firstIndex], arr[secondIndex]); 
             }
+
             break;
         default:
             printf("THAT'S NOT A VALID INPUT TYPE\n");
+            fflush(stdout);
             break;
     }
 }
 
-//Device function for recursive Merge
-__device__ void Merge(int *arr, int *temp, int left, int mid, int right) {
-    int i = left;
-    int j = mid;
-    int k = left;
+__global__ void merge_sort_step(int *device_vals, int *temp, int n, unsigned int width)
+{
+    unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned int start = 2 * width * idx;
 
-    while (i < mid && j < right) 
+    if (start < n)
     {
-        if (arr[i] <= arr[j])
-            temp[k++] = arr[i++];
-        else
-            temp[k++] = arr[j++];
-    }
+        unsigned int middle = min(start + width, n);
+        unsigned int end = min(start + 2 * width, n);
+        unsigned int i = start;
+        unsigned int j = middle;
+        unsigned int k = start;
 
-    while (i < mid)
-        temp[k++] = arr[i++];
-    while (j < right)
-        temp[k++] = arr[j++];
+        while (i < middle && j < end)
+        {
+            if (device_vals[i] < device_vals[j])
+            {
+                temp[k++] = device_vals[i++];
+            }
+            else
+            {
+                temp[k++] = device_vals[j++];
+            }
+        }
+        while (i < middle)
+            temp[k++] = device_vals[i++];
+        while (j < end)
+            temp[k++] = device_vals[j++];
 
-    for (int x = left; x < right; x++)
-        arr[x] = temp[x];
-}
-
-//GPU Kernel for Merge Sort
-__global__ void MergeSortGPU(int* arr, int* temp, int n, int width) 
-{    
-    int tid = threadIdx.x + blockDim.x * blockIdx.x;
-    int left = tid * width;
-    int middle = min(left + width / 2, n);  // Ensure middle is within array bounds
-    int right = min(left + width, n);      // Ensure right is within array bounds
-
-    if (left < n && middle < n) 
-    {
-        Merge(arr, temp, left, middle, right);
-        __syncthreads();
+        for (i = start; i < end; i++)
+        {
+            device_vals[i] = temp[i];
+        }
     }
 }
+
+void merge_sort(int *initial_arr, int length)
+{
+    int *device_vals, *temp;
+    size_t bytes = length * sizeof(int);
+    cudaMalloc((void **)&device_vals, bytes);
+    cudaMalloc((void **)&temp, bytes);
+
+    CALI_MARK_BEGIN(comm);
+    CALI_MARK_BEGIN(commLarge);
+    cudaMemcpy(device_vals, initial_arr, bytes, cudaMemcpyHostToDevice);
+    CALI_MARK_END(commLarge);
+    CALI_MARK_END(comm);
+
+    dim3 threadsPerBlock(numThreads, 1);
+
+    CALI_MARK_BEGIN(comp);
+    CALI_MARK_BEGIN(compLarge);
+    for (int width = 1; width < length; width *= 2)
+    {
+        long long totalThreads = (long long)length / (2 * width);
+        int numBlocks = (totalThreads + threadsPerBlock.x - 1) / threadsPerBlock.x;
+
+        merge_sort_step<<<numBlocks, threadsPerBlock>>>(device_vals, temp, length, width);
+        cudaDeviceSynchronize();
+    }
+    CALI_MARK_END(compLarge);
+    CALI_MARK_END(comp);
+
+    CALI_MARK_BEGIN(comm);
+    CALI_MARK_BEGIN(commLarge);
+    cudaMemcpy(initial_arr, device_vals, bytes, cudaMemcpyDeviceToHost);
+    CALI_MARK_END(commLarge);
+    CALI_MARK_END(comm);
+
+    cudaFree(device_vals);
+    cudaFree(temp);
+}
+
 
 void printArray(int *arr, int size)
 {
@@ -117,40 +161,37 @@ void printArray(int *arr, int size)
 
 bool isSorted(int *arr, int size)
 {
-    CALI_MARK_BEGIN(correctnessCheck);
     for (int i = 0; i < size - 1; i++)
     {
         if (arr[i] > arr[i + 1])
         {
-            CALI_MARK_END(correctnessCheck);
             return false;
         }
     }
-    CALI_MARK_END(correctnessCheck);
     return true;
 }
 
 int main(int argc, char **argv)
 {
     CALI_MARK_BEGIN(mainCali);
-    int numThreads = atoi(argv[1]);
-    int SIZE = atoi(argv[2]);
+    numThreads = atoi(argv[1]);
+    SIZE = atoi(argv[2]);
     int sortType = atoi(argv[3]);
-    int numBlocks = (SIZE + numThreads - 1) / numThreads;
+    numBlocks = SIZE / numThreads;
 
     const char* sortName;
     switch (sortType)
     {
-    case 0:
+    case 1:
         sortName = "Random";
         break;
-    case 1:
+    case 2:
         sortName = "Sorted";
         break;
-    case 2:
+    case 3:
         sortName = "ReverseSorted";
         break;
-    case 3:
+    case 4:
         sortName = "1%Perturbed";
         break;
     }
@@ -159,12 +200,9 @@ int main(int argc, char **argv)
     int *h_arr = new int[SIZE]; //store and manipulate data on CPU
     int *d_arr; //store data on GPU
     int initialize_arr[SIZE]; 
-    int *temp; //temp storage during Merge sort on GPU
     
     cudaMalloc((void**)&d_arr, sizeof(int) * SIZE);
-    cudaMalloc((void **)&temp, sizeof(int) * SIZE);
 
-    CALI_MARK_BEGIN(mainCali);
     cali::ConfigManager mgr;
     mgr.start();
     
@@ -172,41 +210,32 @@ int main(int argc, char **argv)
     CALI_MARK_BEGIN(dataInit);
     data_initialization(initialize_arr, SIZE, sortType);
     CALI_MARK_END(dataInit);
- 
+
     // copy initalized arr onto d_arr
     CALI_MARK_BEGIN(comm);
     CALI_MARK_BEGIN(commLarge);
     cudaMemcpy(d_arr, initialize_arr, SIZE * sizeof(int), cudaMemcpyHostToDevice);    
-    cudaMemcpy(h_arr, d_arr, sizeof(int) * SIZE, cudaMemcpyDeviceToHost);
     CALI_MARK_END(commLarge);
     CALI_MARK_END(comm);
-
-    CALI_MARK_BEGIN(comm);
-    CALI_MARK_BEGIN(commLarge);
-    cudaMemcpy(d_arr, h_arr, sizeof(int) * SIZE, cudaMemcpyHostToDevice);
-    CALI_MARK_END(commLarge);
-    CALI_MARK_END(comm);
+    
     
     // Merge sort
-    CALI_MARK_BEGIN(comp);
-    CALI_MARK_BEGIN(compLarge);
-    for (int wid = 1; wid < SIZE; wid *= 2) {
-        MergeSortGPU<<<numBlocks, numThreads>>>(d_arr, temp, SIZE, wid * 2);
-    }
-    cudaDeviceSynchronize();
-    CALI_MARK_END(compLarge);
-    CALI_MARK_END(comp);
+    merge_sort(d_arr, SIZE);
 
+    //Copy array from device to host
     CALI_MARK_BEGIN(comm);
     CALI_MARK_BEGIN(commLarge);
     cudaMemcpy(h_arr, d_arr, sizeof(int) * SIZE, cudaMemcpyDeviceToHost);
     CALI_MARK_END(commLarge);
     CALI_MARK_END(comm);
-
-    // Correctness Check
-    printArray(h_arr, SIZE);
     
+    // Correctness Check
+    //printArray(h_arr, SIZE);
+    
+    CALI_MARK_BEGIN(correctnessCheck);
     bool sorted = isSorted(h_arr, SIZE);
+    CALI_MARK_END(correctnessCheck);
+    
     if (sorted)
     {
         printf("Array is sorted.\n");
@@ -218,7 +247,6 @@ int main(int argc, char **argv)
 
     delete[] h_arr;
     cudaFree(d_arr);
-    cudaFree(temp);
     
     CALI_MARK_END(mainCali);
 
@@ -234,7 +262,8 @@ int main(int argc, char **argv)
     adiak::value("SizeOfDatatype", sizeof(int));
     adiak::value("InputSize", SIZE);
     adiak::value("InputType", sortName);
-    adiak::value("num_processors", numThreads);
+    adiak::value("num_threads", numThreads);
+    adiak::value("num_blocks", numBlocks);
     adiak::value("group_num", 10);
     adiak::value("implementation_source", "AI & Handwritten & Online");
     
