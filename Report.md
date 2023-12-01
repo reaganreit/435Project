@@ -272,143 +272,126 @@ function main(argc, argv)
 end function
 
 **Merge Sort CUDA Pseudo**
-https://feels2019.pdn.ac.lk/login/index.php
+https://github.com/jaskier07/MergeSortOpenMP/blob/master/mergesort-cuda.cu 
 
-# Function to check if a number is a power of 2
-function isPowerOfTwo(num):
-    i = 0
-    val = 1
-    while val <= num:
-        if val == num:
-            return true
-        i = i + 1
-        val = pow(2, i)
+// Functions
+function checkForError(cudaStatus, text, dev_input)
+    if cudaStatus is not success
+        print error message
+        if dev_input is not null
+            free(dev_input)
+        return true
     return false
 
-# Main function
-function main(argc, argv):
-    SIZE = convert_to_integer(argv[2])
-    
-    if not isPowerOfTwo(SIZE):
-        print("This implementation needs the list size to be a power of two")
-        exit(1)
-    
-    # Allocate a list of floats
-    list = allocate_memory(SIZE * sizeof(float))
-    
-    if list is null:
-        print("Memory full")
-        exit(1)
-    
-    # Generate random float values and populate the list
-    for i in range(SIZE):
-        list[i] = random_float()  # Generate a random float value
-    
-    # Print the input list
-    print("The input list is:")
-    for i in range(SIZE):
-        print("%.2f ", list[i])
-    print("\n")
-    
-    # CUDA stuff begins here
-    start = start_timer()
-    
-    # Allocate memory in CUDA
-    list_cuda = allocate_cuda_memory(SIZE * sizeof(float))
-    
-    # Copy memory from RAM to CUDA
-    copy_memory_to_cuda(list_cuda, list, SIZE * sizeof(float))
-    
-    # Thread configurations
-    threadsPerBlock = convert_to_integer(argv[1])
-    numBlocks = ceil(SIZE / (256 * 2))
-    
-    # Start measuring time for the CUDA kernel only
-    start_kernel = start_timer()
-    
-    # Perform merge sort using CUDA
-    mergesort<<<numBlocks, threadsPerBlock>>>(list_cuda, SIZE)
-    check_for_cuda_errors()
-    
-    # End measuring time for the CUDA kernel
-    stop_kernel = stop_timer()
-    
-    # Copy the answer back from CUDA to RAM
-    copy_memory_to_ram(list, list_cuda, SIZE * sizeof(float))
-    
-    # Free CUDA memory
-    free_cuda_memory(list_cuda)
-    
-    # End measuring time
-    stop = stop_timer()
-    
-    # CUDA stuff ends here
-    
-    # Print the sorted list
-    print("The sorted list is:")
-    for i in range(SIZE):
-        print("%.2f ", list[i])
-    print("\n")
-    
-    # Print the time spent to stderr
-    print("Time spent for CUDA kernel is %.5f seconds" % (elapsed_time_kernel / 1000))
-    print("Time spent for the CUDA operation (including memory allocation and copying) is %.5f seconds" % (elapsed_time / 1000))
-    
-# Function to merge two lists while sorting them in ascending order
-function merge(list, left, middle, right):
-    n = right - left + 1
-    temp = allocate_memory(n * sizeof(float))
-    assert(temp is not null, "Memory allocation failed")
-    
-    i = left
-    j = middle
-    k = 0
-    
-    while i < middle and j <= right:
-        if list[i] < list[j]:
-            temp[k] = list[i]
-            i = i + 1
-        else:
-            temp[k] = list[j]
-            j = j + 1
-        k = k + 1
-    
-    while i < middle:
-        temp[k] = list[i]
-        i = i + 1
-        k = k + 1
-    
-    while j <= right:
-        temp[k] = list[j]
-        j = j + 1
-        k = k + 1
-    
-    for i = left, k = 0, i <= right:
-        list[i] = temp[k]
-        i = i + 1
-        k = k + 1
-    
-    free_memory(temp)
+function printArray(A, size)
+    print newline
+    for i from 0 to size - 1
+        print A[i], ", "
+    print newline
 
-# Function to perform merge sort in ascending order
-function mergesort(list, SIZE):
-    tid = get_thread_index()
-    step = 1
-    
-    while step < SIZE - 1:
-        if tid % step == 0 and tid * 2 < SIZE:
-            left = 2 * tid
-            middle = 2 * tid + step
-            right = 2 * tid + 2 * step - 1
-            merge(list, left, middle, right)
-        
-        step = step * 2
-        synchronize_threads()
+function checkIfCorrectlySorted(arr)
+    for i from 0 to VECTOR_SIZE - 2
+        if arr[i] > arr[i + 1]
+            print "ERROR!"
+            return
+    print "OK"
 
-# Define other required functions for CUDA memory allocation, copying, timing, etc.
+function getMid(start, end)
+    return start + (end - start) / 2
 
-# Call the main function
-main(argc, argv)
+function merge(arr, leftStart, rightEnd, mid, tmpIndexStart)
+    // Implementation of merge function
+
+function fillArrayWithNumbers(numbers)
+    // Implementation of fillArrayWithNumbers function
+
+function mergeSort(arr, leftStart, rightEnd, minVectorLength, vectorLength, tmpIndexStart)
+    // Implementation of mergeSort function
+
+function mergeKernel(arr, vectorLengthPerThread, vectorLength, tmpIndexStart)
+    // Implementation of mergeKernel function
+
+function mergeSortKernel(arr, vectorLengthPerThread, minVectorLength, vectorLength, tmpIndexStart)
+    // Implementation of mergeSortKernel function
+
+// Main Program
+vectorMultiplier = 2
+vectorLength = VECTOR_SIZE
+threadsPerBlock = THREADS_PER_BLOCK
+vectorLengthPerThread = VECTOR_LENGTH_PER_THREAD
+numBlocks = ceil(vectorLength / threadsPerBlock)
+blockVectorLength = vectorLength / numBlocks
+vectorSizeInBytes = vectorLength * sizeof(short) * 2
+tmpIndexStart = vectorLength
+
+vector = allocate_memory_for_vector
+fillArrayWithNumbers(vector)
+dev_input = null
+cudaStatus = cudaSetDevice(0)
+
+if checkForError(cudaStatus, "cudaSetDevice failed! Do you have a CUDA-capable GPU installed?", dev_input)
+    return cudaStatus
+
+cudaStatus = cudaMalloc((void**)&dev_input, vectorSizeInBytes)
+
+if checkForError(cudaStatus, "cudaMalloc (dev_input) failed!", dev_input)
+    return cudaStatus
+
+cudaStatus = cudaMemcpy(dev_input, vector, vectorSizeInBytes, cudaMemcpyHostToDevice)
+
+if checkForError(cudaStatus, "cudaMemcpy (vector -> dev_input) failed!", dev_input)
+    return cudaStatus
+
+print "Configuration: vector length:", vectorLength, ", threads per block:", threadsPerBlock, ", vector length per thread:", vectorLengthPerThread, ", num blocks:", numBlocks, ", block vector length:", blockVectorLength
+
+i = 0
+while vectorLengthPerThread <= blockVectorLength
+    print "Iter:", i, ", vector length per thread:", vectorLengthPerThread
+
+    mergeSortKernel<<<numBlocks, threadsPerBlock>>>(dev_input, vectorLengthPerThread, vectorLengthPerThread / VECTOR_LENGTH_PER_THREAD, vectorLength, tmpIndexStart)
+
+    cudaStatus = cudaGetLastError()
+
+    if checkForError(cudaStatus, "mergeKernel launch failed!", dev_input)
+        return cudaStatus
+
+    cudaStatus = cudaDeviceSynchronize()
+
+    if checkForError(cudaStatus, "cudaDeviceSynchronize on \"mergeKernel\" returned error code.", dev_input)
+        return cudaStatus
+
+    vectorLengthPerThread *= vectorMultiplier
+
+    if PROGRAM_STATE >= HARD_DBG
+        cudaStatus = cudaMemcpy(vector, dev_input, vectorSizeInBytes, cudaMemcpyDeviceToHost)
+
+        if checkForError(cudaStatus, "cudaMemcpy (dev_input -> vector) failed!")
+            return cudaStatus
+
+        printArray(vector, vectorLength)
+
+end while
+
+if PROGRAM_STATE < HARD_DBG
+    cudaStatus = cudaMemcpy(vector, dev_input, vectorSizeInBytes, cudaMemcpyDeviceToHost)
+
+    if checkForError(cudaStatus, "cudaMemcpy (dev_input -> vector) failed!")
+        return cudaStatus
+
+mergeSort(vector, 0, vectorLength - 1, blockVectorLength, vectorLength, tmpIndexStart)
+
+if PROGRAM_STATE >= HARD_DBG
+    printArray(vector, vectorLength)
+
+free(dev_input)
+cudaStatus = cudaDeviceReset()
+
+if checkForError(cudaStatus, "cudaDeviceReset failed!")
+    return 1
+
+checkIfCorrectlySorted(vector)
+return 0
+
 
 **Sample Sort CUDA Pseudo**
 https://github.com/SwayambhuNathRay/Sample-Sort-CUDA/blob/master/sample_sort.cu 
