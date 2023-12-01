@@ -228,9 +228,11 @@ int main(int argc, char** argv) {
   	free(sub_array);
   	free(tmp_array);
  
+    CALI_MARK_BEGIN(comm);
     CALI_MARK_BEGIN(mpiBarrier);
     MPI_Barrier(MPI_COMM_WORLD);
     CALI_MARK_END(mpiBarrier);
+    CALI_MARK_END(comm);
 
     CALI_MARK_END(mainCali);
 
@@ -246,7 +248,7 @@ int main(int argc, char** argv) {
     adiak::value("Datatype", "int"); // The datatype of input elements (e.g., double, int, float)
     adiak::value("SizeOfDatatype", sizeof(int)); // sizeof(datatype) of input elements in bytes (e.g., 1, 2, 4)
     adiak::value("InputSize", n); // The number of elements in input dataset (1000)
-    adiak::value("InputType", "Random"); // For sorting, this would be "Sorted", "ReverseSorted", "Random", "1%perturbed"
+    adiak::value("InputType", sortType); // For sorting, this would be "Sorted", "ReverseSorted", "Random", "1%perturbed"
     adiak::value("num_procs", world_size); // The number of processors (MPI ranks)
     adiak::value("group_num", 10); // The number of your group (integer, e.g., 1, 10)
     adiak::value("implementation_source", "Online"); // Where you got the source code of your algorithm; choices: ("Online", "AI", "Handwritten").
