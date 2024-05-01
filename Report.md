@@ -153,17 +153,18 @@ adiak::launchdate();    // launch date of the job
 adiak::libraries();     // Libraries used
 adiak::cmdline();       // Command line used to launch the job
 adiak::clustername();   // Name of the cluster
-adiak::value("Algorithm", algorithm); // The name of the algorithm you are using (e.g., "MergeSort", "BitonicSort")
-adiak::value("ProgrammingModel", programmingModel); // e.g., "MPI", "CUDA", "MPIwithCUDA"
-adiak::value("Datatype", datatype); // The datatype of input elements (e.g., double, int, float)
-adiak::value("SizeOfDatatype", sizeOfDatatype); // sizeof(datatype) of input elements in bytes (e.g., 1, 2, 4)
-adiak::value("InputSize", inputSize); // The number of elements in input dataset (1000)
-adiak::value("InputType", inputType); // For sorting, this would be "Sorted", "ReverseSorted", "Random", "1%perturbed"
+adiak::value("algorithm", algorithm); // The name of the algorithm you are using (e.g., "merge", "bitonic")
+adiak::value("programming_model", programming_model); // e.g., choices: ("mpi", "cuda")
+adiak::value("data_type", data_type); // The datatype of input elements (e.g., double, int, float)
+adiak::value("size_of_data_type", size_of_data_type); // sizeof(datatype) of input elements in bytes (e.g., 1, 2, 4)
+adiak::value("input_size", input_size); // The number of elements in input dataset (1000)
+adiak::value("input_type", input_type); // For sorting, this would be choices: ("Sorted", "ReverseSorted", "Random", "1_perc_perturbed")
 adiak::value("num_procs", num_procs); // The number of processors (MPI ranks)
 adiak::value("num_threads", num_threads); // The number of CUDA or OpenMP threads
 adiak::value("num_blocks", num_blocks); // The number of CUDA blocks 
+adiak::value("scalability", scalability); // The scalability of your algorithm. choices: ("strong", "weak")
 adiak::value("group_num", group_number); // The number of your group (integer, e.g., 1, 10)
-adiak::value("implementation_source", implementation_source) // Where you got the source code of your algorithm; choices: ("Online", "AI", "Handwritten").
+adiak::value("implementation_source", implementation_source) // Where you got the source code of your algorithm. choices: ("online", "ai", "handwritten").
 ```
 
 They will show up in the `Thicket.metadata` if the caliper file is read into Thicket.
@@ -176,10 +177,10 @@ Include detailed analysis of computation performance, communication performance.
 Include figures and explanation of your analysis.
 
 ### 4a. Vary the following parameters
-For inputSizes:
+For input_size's:
 - 2^16, 2^18, 2^20, 2^22, 2^24, 2^26, 2^28
 
-For inputTypes:
+For input_type's:
 - Sorted, Random, Reverse sorted, 1%perturbed
 
 num_procs, num_threads:
@@ -194,7 +195,7 @@ This should result in 4x7x10=280 Caliper files for your MPI experiments.
 
 To automate running a set of experiments, parameterize your program.
 
-- inputType: If you are sorting, "Sorted" could generate a sorted input to pass into your algorithms
+- input_type: If you are sorting, "Sorted" could generate a sorted input to pass into your algorithms
 - algorithm: You can have a switch statement that calls the different algorithms and sets the Adiak variables accordingly
 - num_procs:   How many MPI ranks you are using
 - num_threads: Number of CUDA or OpenMP threads
@@ -223,9 +224,9 @@ generate additional performance data, measuring the hardware counters on the CPU
 Plots for the presentation should be as follows:
 - For each implementation:
     - For each of comp_large, comm, and main:
-        - Strong scaling plots for each InputSize with lines for InputType (7 plots - 4 lines each)
-        - Strong scaling speedup plot for each InputType (4 plots)
-        - Weak scaling plots for each InputType (4 plots)
+        - Strong scaling plots for each input_size with lines for input_type (7 plots - 4 lines each)
+        - Strong scaling speedup plot for each input_type (4 plots)
+        - Weak scaling plots for each input_type (4 plots)
 
 Analyze these plots and choose a subset to present and explain in your presentation.
 
